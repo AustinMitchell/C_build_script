@@ -21,13 +21,52 @@ target = sys.argv[1]
 def shell(cmd):
 	return Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, close_fds=True)
 
-# Generates a list of dependencies using g++ -H
+""" Generates a list of dependencies using g++ -H, only using dependencied from your include
+directory. 
+"""
 def dependencies(filePath):
-	deps = [s.strip() for s in shell("g++ -H -I" + headerDir + " " + filePath).stdout.read().split("\n") if headerDir in s or sourceDir in s]
+	deps = [s.strip() for s in shell("g++ -H -I" + headerDir + " " + filePath).stdout.read().split("\n") if headerDir in s]
 	return [d for d in deps if len(d.split(" ")[0])*"." == d.split(" ")[0]]
 
 # Builds a dependency tree, takes in (depth, dependency) pairs and makes a tree in order of how
 # they should be built 
+""" Here's how it works.
+	It takes in a list of pairs. The first iterm is how deep the item is in the dependency
+chain, and the second is the filename for the dependency. The expected input is basically
+what comes out when you run g++ -H and take away system libraries, where the amount of dots
+before the dependency represent the depth.
+	The input follows two rules:
+		for a given list 'a' that represents the depths of the list:
+			for n > 0: a[0] < a[n]
+			for n >= 0: if a[i] < a[i+1]: a[i+1] = a[i] + 1
+	This list for instance follows these rules.
+	-(1, dep1)
+	-(2, dep2)
+	-(3, dep3)
+	-(3, dep4)
+	-(2, dep5)
+	We pull out the first item in this list and store it as the root of our tree. Then we
+go through the rest of the list, and run the function again on each sublist that represents
+another branch. If we take our last example, we get this:
+	-root: (1, dep1)
+
+	-branch 1:	(2, dep2)
+				(3, dep3)
+				(3, dep4)
+
+	-branch 2:	(2, dep5)
+
+	We don't need the depth anymore, so we store the root simply as the dependency. The
+result for our example would look like this:
+           dep1
+          /    \
+        dep2   dep5
+       /    \
+     dep3  dep4
+
+	This produces a binary tree, but for any given node we can have as many branches as
+we need.
+"""
 def buildDepTree(deps):
 	#print "Current deps: ", deps
 	if not deps:
@@ -52,47 +91,38 @@ def buildDepTree(deps):
 
 # Starts off the building process
 def build():
+	# Converts each line of raw string data into a list of depth and dependency pairs
 	deps = dependencies(mainSource)
 	deps = [d.split(" ") for d in deps]
 	deps = [(len(depth), path) for depth, path in deps]
 
+	#   Builds dependency tree. Adding (0, mainHeader) guarantees that the list follows
+	# the rules specified in the function documentation
 	tree = buildDepTree([(0, mainHeader)] + deps)
 
-
+	isUpdated = {}
 	objectList = []
-	# isUpdated = {}
-	buildFailed = buildTree(tree, objectList)
-
-	# if not mainObject in objectList:
-	# 	buildMain = False
-	# 	if os.path.exists(mainObject):
-	# 		if os.path.getmtime(mainSource) > os.path.getmtime(mainObject):
-	# 			buildMain = True
-	# 		else:
-	# 			for d in 
-	# 	else:
-	# 		buildMain = True
-
-	# 	if buildMain:
-	# 		objectList.append(mainObject)
-	# 		if buildObject(mainSource, mainObject) != 0:
-	# 			buildFailed = True
-	# 	else:
-	# 		print mainObject + " is up to date, skipping build"
+	buildFailed = buildTree(tree, objectList, isUpdated)
 
 	if buildFailed:
 		print "\nBuilding failed!"
 		print "Skipping executable generation"
-	elif not objectList:
+	# Skips building if nothing was updated.
+	elif not [u for u in isUpdated if isUpdated[u] == True]:
 		print "\nEverything up to date!"
 		print "Skipping executable generation"
 	else:
+		# Again, assumes that g++ standard is C++ 11
 		print "\nGenerating executable... "
 		cmd = "g++ -std=c++11 -o " + exeFile +  " " + " ".join(objectList)
 		print "Running: " + cmd
 		call(cmd.split(" "))
 
-# Calls g++ linker on source file
+"""
+	Calls 'g++ -c' on the given source file and directs it to the given object file location.
+Assumes project standard will be C++ 11. If the path for the object file doesn't exist, a new
+directory structure will be created for it.
+"""
 def buildObject(sourceFile, objectFile):
 	buildDir = "/".join(objectFile.split("/")[:-1])
 	if not os.path.exists(buildDir):
@@ -106,18 +136,39 @@ def buildObject(sourceFile, objectFile):
 		print msg
 	return ret.returncode
 
-# Recursively builds source files in the tree
+""" 
+	Recursively builds source files in the tree. Basically it's assumed that not
+every header will have a source file, but every source file (excluding the main file)
+there will be a corresponding header file. Last build is the last relevant date 
+pushed up through the tree. isUpdated is a map that tracks what files have been 
+visited already, and if they have, whether they have been updated (changed since
+last build, or a dependency changed and they need to rebuild)
+"""
 def buildTree(tree, objectList, isUpdated={}, lastBuild=0):
 	if not tree:
 		return False
 
-	if tree[0] in isUpdated and not tree[0] == mainHeader:
+	if tree[0] == mainHeader:
+		foundHeader = False
+		for dep in tree[1]:
+			if dep[0] == mainHeader:
+				foundHeader = True
+				break
+		if foundHeader:
+			buildFailed = False
+			for dep in tree[1]:
+				buildFailed = buildFailed or buildTree(dep, objectList, isUpdated, lastBuild)
+			return buildFailed
+
+	if tree[0] in isUpdated:
 		return
 	isUpdated[tree[0]] = False
 
+	# Makes up source files 
 	headerFile = tree[0]
 	sourceFile = sourceDir + headerFile[len(headerDir):-len(headerExt)] + sourceExt
 	objectFile = objectDir + headerFile[len(headerDir):-len(headerExt)] + objectExt
+
 
 	headerFileTime = 0
 	if os.path.exists(headerFile):

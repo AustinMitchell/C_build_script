@@ -148,6 +148,11 @@ def buildTree(tree, objectList, isUpdated={}, lastBuild=0):
 	if not tree:
 		return False
 
+	""" 
+		This check is important in case mainHeader is listed twice in a row, which is the case
+	if a header file for main actually exists (go look at the build() function for the why), if
+	there isn't a main header in the include folder then this won't matter.
+	"""
 	if tree[0] == mainHeader:
 		foundHeader = False
 		for dep in tree[1]:
@@ -160,6 +165,7 @@ def buildTree(tree, objectList, isUpdated={}, lastBuild=0):
 				buildFailed = buildFailed or buildTree(dep, objectList, isUpdated, lastBuild)
 			return buildFailed
 
+	# Needed in case multiple files depend on the same thing
 	if tree[0] in isUpdated:
 		return
 	isUpdated[tree[0]] = False
@@ -169,7 +175,7 @@ def buildTree(tree, objectList, isUpdated={}, lastBuild=0):
 	sourceFile = sourceDir + headerFile[len(headerDir):-len(headerExt)] + sourceExt
 	objectFile = objectDir + headerFile[len(headerDir):-len(headerExt)] + objectExt
 
-
+	# Gets modified time for header file, or sets to 0 if there's no header (such as for main source file)
 	headerFileTime = 0
 	if os.path.exists(headerFile):
 		headerFileTime = os.path.getmtime(headerFile)
@@ -178,27 +184,34 @@ def buildTree(tree, objectList, isUpdated={}, lastBuild=0):
 	needsBuilding = False
 	if os.path.exists(sourceFile):
 		sourceFileTime = os.path.getmtime(sourceFile)
+		# If source file exists then we will be adding a corresponding object file to the file list.
 		objectList.append(objectFile)
+		# If there's no object file then we will need to make one (lastBuild=0 tells its dependencies that this will be freshly built)
 		if not os.path.exists(objectFile):
 			lastBuild = 0
 			needsBuilding = True
 		else:
+			# Otherwise we need to compare this object file to the header and source files to see if it needs building
 			lastBuild = os.path.getmtime(objectFile)
 			if lastBuild < sourceFileTime or lastBuild < headerFileTime:
 				needsBuilding = True
 	else:
+		# In case of a header file with no source, this will tell anything that depends on it whether they need to get changes from the header
 		if lastBuild < headerFileTime:
 			needsBuilding = True
 
-
 	for dep in tree[1]:
+		# Recursively builds dependencies before building itself. 
 		buildFailed = buildFailed or buildTree(dep, objectList, isUpdated, lastBuild)
+		# If any of the dependencies are newer then mark this for updating
 		needsBuilding = needsBuilding or isUpdated[dep[0]]
 
-
+	# Now tells anyone who checks this map whether it was marked as updated
 	isUpdated[headerFile] = needsBuilding
 	
+
 	if os.path.exists(sourceFile):
+		# If this header has a source file, build it if it needs building
 		if needsBuilding:
 			if buildObject(sourceFile, objectFile) != 0:
 				buildFailed = True

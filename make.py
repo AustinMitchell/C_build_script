@@ -3,6 +3,7 @@ import shutil
 import os
 import sys
 
+exeDir = "./bin"
 exeFile = "./bin/run.exe"
 
 sourceDir = "./src/"
@@ -107,16 +108,25 @@ def build():
 	if buildFailed:
 		print "\nBuilding failed!"
 		print "Skipping executable generation"
-	# Skips building if nothing was updated.
-	elif not [u for u in isUpdated if isUpdated[u] == True]:
-		print "\nEverything up to date!"
-		print "Skipping executable generation"
 	else:
-		# Again, assumes that g++ standard is C++ 11
-		print "\nGenerating executable... "
-		cmd = "g++ -std=c++11 -o " + exeFile +  " " + " ".join(objectList)
-		print "Running: " + cmd
-		call(cmd.split(" "))
+		needsCompiling = False
+		if not os.path.exists(exeFile):
+			needsCompiling = True
+		elif os.path.getmtime(mainObject) > os.path.getmtime(exeFile):
+			needsCompiling = True
+
+		if needsCompiling:
+			if not os.path.exists(exeDir):
+				os.path.makedirs(exeDir)
+			# Again, assumes that g++ standard is C++ 11
+			print "\nGenerating executable... "
+			cmd = "g++ -std=c++11 -o " + exeFile +  " " + " ".join(objectList)
+			print "Running: " + cmd
+			call(cmd.split(" "))
+		else:
+			# Skips building if nothing was updated.
+			print "\nEverything up to date!"
+			print "Skipping executable generation"
 
 """
 	Calls 'g++ -c' on the given source file and directs it to the given object file location.
@@ -139,12 +149,12 @@ def buildObject(sourceFile, objectFile):
 """ 
 	Recursively builds source files in the tree. Basically it's assumed that not
 every header will have a source file, but every source file (excluding the main file)
-there will be a corresponding header file. Last build is the last relevant date 
-pushed up through the tree. isUpdated is a map that tracks what files have been 
-visited already, and if they have, whether they have been updated (changed since
-last build, or a dependency changed and they need to rebuild)
+there will be a corresponding header file. isUpdated is a map that tracks what files have been 
+visited already, and if they have, what is the latest modify date between it's header file and
+its dependencies, useful to track if there are multiple things that depend on the same thing,
+will skip re-checking that dependency branch
 """
-def buildTree(tree, objectList, isUpdated={}, lastBuild=0):
+def buildTree(tree, objectList, isUpdated={}):
 	if not tree:
 		return False
 
@@ -168,7 +178,6 @@ def buildTree(tree, objectList, isUpdated={}, lastBuild=0):
 	# Needed in case multiple files depend on the same thing
 	if tree[0] in isUpdated:
 		return
-	isUpdated[tree[0]] = False
 
 	# Makes up source files 
 	headerFile = tree[0]
@@ -180,34 +189,35 @@ def buildTree(tree, objectList, isUpdated={}, lastBuild=0):
 	if os.path.exists(headerFile):
 		headerFileTime = os.path.getmtime(headerFile)
 
-	buildFailed = False
 	needsBuilding = False
+	lastBuild = 0
 	if os.path.exists(sourceFile):
 		sourceFileTime = os.path.getmtime(sourceFile)
 		# If source file exists then we will be adding a corresponding object file to the file list.
 		objectList.append(objectFile)
 		# If there's no object file then we will need to make one (lastBuild=0 tells its dependencies that this will be freshly built)
-		if not os.path.exists(objectFile):
-			lastBuild = 0
-			needsBuilding = True
-		else:
+		if os.path.exists(objectFile):
 			# Otherwise we need to compare this object file to the header and source files to see if it needs building
 			lastBuild = os.path.getmtime(objectFile)
-			if lastBuild < sourceFileTime or lastBuild < headerFileTime:
+			if lastBuild < sourceFileTime:
 				needsBuilding = True
-	else:
-		# In case of a header file with no source, this will tell anything that depends on it whether they need to get changes from the header
-		if lastBuild < headerFileTime:
-			needsBuilding = True
+		else:
+			lastBuild = 0
 
+	buildFailed = False
+	latestModifyTime = headerFileTime
 	for dep in tree[1]:
 		# Recursively builds dependencies before building itself. 
-		buildFailed = buildFailed or buildTree(dep, objectList, isUpdated, lastBuild)
+		buildFailed = buildFailed or buildTree(dep, objectList, isUpdated)
 		# If any of the dependencies are newer then mark this for updating
-		needsBuilding = needsBuilding or isUpdated[dep[0]]
+		if isUpdated[dep[0]] > latestModifyTime:
+			latestModifyTime = isUpdated[dep[0]]
+
+	if latestModifyTime > lastBuild:
+		needsBuilding = True
 
 	# Now tells anyone who checks this map whether it was marked as updated
-	isUpdated[headerFile] = needsBuilding
+	isUpdated[headerFile] = latestModifyTime
 	
 
 	if os.path.exists(sourceFile):
@@ -227,3 +237,5 @@ if target == "build":
 elif target == "clean":
 	if os.path.exists(objectDir):
 		shutil.rmtree(objectDir)
+	if os.path.exists(exeFile):
+		os.remove(exeFile)

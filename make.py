@@ -101,9 +101,8 @@ def build():
 	# the rules specified in the function documentation
 	tree = buildDepTree([(0, mainHeader)] + deps)
 
-	isUpdated = {}
 	objectList = []
-	buildFailed = buildTree(tree, objectList, isUpdated)
+	buildFailed = buildTree(tree, objectList)
 
 	if buildFailed:
 		print "\nBuilding failed!"

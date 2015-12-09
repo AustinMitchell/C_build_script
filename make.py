@@ -3,6 +3,25 @@ import shutil
 import os
 import sys
 
+class ansiColors:
+	BLACK = '\033[90m'
+	RED = '\033[91m'
+	GREEN = '\033[92m'
+	YELLOW = '\033[93m'
+	BLUE = '\033[94m'
+	MAGENTA = '\033[95m'
+	CYAN = '\033[96m'
+	WHITE = '\033[97m'
+
+	END = '\033[0m'
+	BOLD = '\033[1m'
+	ULINE = '\033[4m'
+
+colors = {"blk":ansiColors.BLACK, "red":ansiColors.RED, "grn":ansiColors.GREEN, "ylw":ansiColors.YELLOW,
+		  "blu":ansiColors.BLUE, "mgt":ansiColors.MAGENTA, "cyn":ansiColors.CYAN, "wht":ansiColors.WHITE}
+
+flags = "-std=c++11"
+
 exeDir = "./bin"
 exeFile = "./bin/run.exe"
 
@@ -18,6 +37,9 @@ mainHeader = headerDir + mainSource[len(sourceDir):-len(sourceExt)] + headerExt
 mainObject = objectDir + mainSource[len(sourceDir):-len(sourceExt)] + objectExt
 
 target = sys.argv[1]
+
+def printc(col, msg):
+	print col + msg + ansiColors.END
 
 def shell(cmd):
 	return Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, close_fds=True)
@@ -105,8 +127,8 @@ def build():
 	buildFailed = buildTree(tree, objectList)
 
 	if buildFailed:
-		print "\nBuilding failed!"
-		print "Skipping executable generation"
+		printc(colors['ylw']+ansiColors.BOLD, "\nBuilding failed!")
+		printc(colors['ylw']+ansiColors.BOLD, "Skipping executable generation")
 	else:
 		needsCompiling = False
 		if not os.path.exists(exeFile):
@@ -118,14 +140,14 @@ def build():
 			if not os.path.exists(exeDir):
 				os.path.makedirs(exeDir)
 			# Again, assumes that g++ standard is C++ 11
-			print "\nGenerating executable... "
-			cmd = "g++ -std=c++11 -o " + exeFile +  " " + " ".join(objectList)
-			print "Running: " + cmd
+			printc(colors['cyn']+ansiColors.BOLD, "\nGenerating executable... ")
+			cmd = "g++ " + flags + " -o " + exeFile +  " " + " ".join(objectList)
+			printc(colors['cyn']+ansiColors.BOLD, "Running: " + cmd)
 			call(cmd.split(" "))
 		else:
 			# Skips building if nothing was updated.
-			print "\nEverything up to date!"
-			print "Skipping executable generation"
+			printc (colors['grn']+ansiColors.BOLD, "\nEverything up to date!")
+			printc (colors['grn']+ansiColors.BOLD, "Skipping executable generation")
 
 """
 	Calls 'g++ -c' on the given source file and directs it to the given object file location.
@@ -136,13 +158,18 @@ def buildObject(sourceFile, objectFile):
 	buildDir = "/".join(objectFile.split("/")[:-1])
 	if not os.path.exists(buildDir):
 		os.makedirs(buildDir)
-	cmd = "g++ -std=c++11 -c -I" + headerDir + " " + sourceFile + " -o " + objectFile
-	print "Running: " + cmd
+	cmd = "g++ " + flags + " -c -I" + headerDir + " " + sourceFile + " -o " + objectFile
+	printc (ansiColors.BOLD, "Running: " + cmd)
 	ret = shell (cmd)
 	ret.wait()
 	msg = ret.stdout.read()
 	if len(msg) > 0:
-		print msg
+		color = ''
+		if ret.returncode == 0:
+			color = colors['ylw']
+		else:
+			color = colors['red']
+		printc(color, msg)
 	return ret.returncode
 
 """ 
@@ -218,8 +245,8 @@ def buildTree(tree, objectList, isUpdated={}):
 	# Now tells anyone who checks this map whether it was marked as updated
 	isUpdated[headerFile] = latestModifyTime
 
-	if buildFailed != 0:
-		print "Skipping (build dependencies failed): " + objectFile
+	if buildFailed:
+		printc(colors["ylw"], "Skipping (build dependencies failed): " + objectFile)
 		return buildFailed
 
 	if os.path.exists(sourceFile):
@@ -228,7 +255,7 @@ def buildTree(tree, objectList, isUpdated={}):
 			if buildObject(sourceFile, objectFile) != 0:
 				buildFailed = True
 		else:
-			print "Skipping (up to date):                " + objectFile
+			printc(colors['grn'], "Skipping (up to date):                " + objectFile)
 
 	return buildFailed
 

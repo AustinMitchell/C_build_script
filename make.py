@@ -32,6 +32,8 @@ headerExt = ".h"
 objectDir = "./build/"
 objectExt = ".o"
 
+otherIncludes = "-I./lib/"
+
 mainSource = sourceDir + "main" + sourceExt
 mainHeader = headerDir + mainSource[len(sourceDir):-len(sourceExt)] + headerExt
 mainObject = objectDir + mainSource[len(sourceDir):-len(sourceExt)] + objectExt
@@ -48,7 +50,7 @@ def shell(cmd):
 directory. 
 """
 def dependencies(filePath):
-	deps = [s.strip() for s in shell("g++ -H -I" + headerDir + " " + filePath).stdout.read().split("\n") if headerDir in s]
+	deps = [s.strip() for s in shell("g++ -H -I" + headerDir + " " + otherIncludes + " " + filePath).stdout.read().split("\n") if headerDir in s]
 	return [d for d in deps if len(d.split(" ")[0])*"." == d.split(" ")[0]]
 
 # Builds a dependency tree, takes in (depth, dependency) pairs and makes a tree in order of how
@@ -158,7 +160,7 @@ def buildObject(sourceFile, objectFile):
 	buildDir = "/".join(objectFile.split("/")[:-1])
 	if not os.path.exists(buildDir):
 		os.makedirs(buildDir)
-	cmd = "g++ " + flags + " -c -I" + headerDir + " " + sourceFile + " -o " + objectFile
+	cmd = "g++ " + flags + " -c -I" + headerDir + " " + otherIncludes + " " + sourceFile + " -o " + objectFile
 	printc (ansiColors.BOLD, "Running: " + cmd)
 	ret = shell (cmd)
 	ret.wait()

@@ -217,7 +217,10 @@ def buildTree(tree, objectList, isUpdated={}):
 
 	# Now tells anyone who checks this map whether it was marked as updated
 	isUpdated[headerFile] = latestModifyTime
-	
+
+	if buildFailed != 0:
+		print "Skipping (build dependencies failed): " + objectFile
+		return buildFailed
 
 	if os.path.exists(sourceFile):
 		# If this header has a source file, build it if it needs building
@@ -225,7 +228,7 @@ def buildTree(tree, objectList, isUpdated={}):
 			if buildObject(sourceFile, objectFile) != 0:
 				buildFailed = True
 		else:
-			print objectFile + " is up to date, skipping build"
+			print "Skipping (up to date):                " + objectFile
 
 	return buildFailed
 

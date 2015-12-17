@@ -4,18 +4,18 @@ import os
 import sys
 
 class ansiColors:
-	blk = '\033[90m'
-	red = '\033[91m'
-	grn = '\033[92m'
-	ylw = '\033[93m'
-	blu = '\033[94m'
-	mgt = '\033[95m'
-	cyn = '\033[96m'
-	wht = '\033[97m'
+    blk = '\033[90m'
+    red = '\033[91m'
+    grn = '\033[92m'
+    ylw = '\033[93m'
+    blu = '\033[94m'
+    mgt = '\033[95m'
+    cyn = '\033[96m'
+    wht = '\033[97m'
 
-	end = '\033[0m'
-	bold = '\033[1m'
-	uline = '\033[4m'
+    end = '\033[0m'
+    bold = '\033[1m'
+    uline = '\033[4m'
 
 c = ansiColors
 
@@ -39,142 +39,162 @@ mainObject = objectDir + mainSource[len(sourceDir):-len(sourceExt)] + objectExt
 
 target = sys.argv[1]
 
-def printc(col, msg):
-	print col + msg + c.end
-
 def shell(cmd):
-	return Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, close_fds=True)
+    return Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
 
 """ Generates a list of dependencies using g++ -H, only using dependencied from your include
 directory. 
 """
 def dependencies(filePath):
-	deps = [s.strip() for s in shell("g++ -H -I" + headerDir + " " + otherIncludes + " " + filePath).stdout.read().split("\n") if headerDir in s]
-	return [d for d in deps if len(d.split(" ")[0])*"." == d.split(" ")[0]]
+    cmd = "g++ " + flags + " -H -I" + headerDir + " " + filePath
+    deps = [s for s in shell(cmd).stdout.read().split("\n") if len(s)>0 and s[0]=="."]
+    deps = [s.strip() for s in deps if headerDir in s]
 
-# Builds a dependency tree, takes in (depth, dependency) pairs and makes a tree in order of how
-# they should be built 
-""" Here's how it works.
-	It takes in a list of pairs. The first iterm is how deep the item is in the dependency
-chain, and the second is the filename for the dependency. The expected input is basically
-what comes out when you run g++ -H and take away system libraries, where the amount of dots
-before the dependency represent the depth.
-	The input follows two rules:
-		for a given list 'a' that represents the depths of the list:
-			for n > 0: a[0] < a[n]
-			for n >= 0: if a[i] < a[i+1]: a[i+1] = a[i] + 1
-	This list for instance follows these rules.
-	-(1, dep1)
-	-(2, dep2)
-	-(3, dep3)
-	-(3, dep4)
-	-(2, dep5)
-	We pull out the first item in this list and store it as the root of our tree. Then we
-go through the rest of the list, and run the function again on each sublist that represents
-another branch. If we take our last example, we get this:
-	-root: (1, dep1)
+    filedeps = []
+    for d in deps:
+        dSplit = d.split(" ")
+        if dSplit[0][len(dSplit[0])-1] == ".":
+            filedeps.append((len(dSplit[0]), dSplit[1]))
 
-	-branch 1:	(2, dep2)
-				(3, dep3)
-				(3, dep4)
+    return filedeps
 
-	-branch 2:	(2, dep5)
-
-	We don't need the depth anymore, so we store the root simply as the dependency. The
-result for our example would look like this:
-           dep1
-          /    \
-        dep2   dep5
-       /    \
-     dep3  dep4
-
-	This produces a binary tree, but for any given node we can have as many branches as
-we need.
+""" Builds a dependency tree, takes in a headerfile name and makes a tree in order of how
+they should be built, using header and source dependencies.
 """
-def buildDepTree(deps):
-	#print "Current deps: ", deps
-	if not deps:
-		return None
-	if len(deps) == 1:
-		return (deps[0][1], [])
+def buildDepTree(depth, headerFile, deps):
+    # Basic tree. First item is the dep name, the second is a list, where each item
+    # is a tuple where the first item is a name, and the second is a list. Recursive 
+    # tree based on a python list.
+    tree = [headerFile, []]
 
-	tree = (deps[0][1], [])
-	treeDepth = deps[0][0]
+    # In this project we assume either header files are stand-alone, or have a 
+    # corresponding source file which includes the header file, but may also include
+    # things that aren't included in the header file, so that stuff needs to be added
+    # to the tree so we can see if the source needs building based on ALL dependencies.
+    sourceFile = sourceDir + headerFile[len(headerDir):-len(headerExt)] + sourceExt
+    sourceDeps = []
+    if (os.path.exists(sourceFile)):
+        sourceDeps = dependencies(sourceFile)
+        sourceDeps = [[d+depth, name] for d, name in sourceDeps]
 
-	branchStart = 1
-	i = 2
-	for d in deps[i:]:
-		depth = d[0]
-		if depth <= treeDepth+1:
-			tree[1].append(buildDepTree(deps[branchStart:i]))
-			branchStart = i
-		i += 1
-	tree[1].append(buildDepTree(deps[branchStart:]))
+    # Returns the basic structure if there are no dependencies.
+    if not deps and not sourceDeps:
+        return tree
+    # Returns the basic structure with one dependency if theres only one between the 
+    # two lists.
+    if len(deps)+len(sourceDeps) == 1:
+        tree[1].append([(deps+sourceDeps)[0][1], []])
+        return tree
 
-	return tree
+    # This is a dictionary whose keys are dependency names, and values are a tuple where
+    # the first item is the beginning of the headers dependencies in the list, and the 
+    # second is the end. Basically just splitting the list into groups, searchable by name
+    headerDepSet = {} 
+    if len(deps) > 0:
+        nextDepth = depth+1
+        depStart = 0
+        i = 1
+        for d in deps[1:]:
+            currentDepth = d[0]
+            if currentDepth <= nextDepth:
+                headerDepSet[deps[depStart][1]] = (depStart+1, i+1)
+                depStart = i
+            i += 1
+        headerDepSet[deps[depStart][1]] = (depStart+1, len(deps))
+
+    # This is the same but for source deps.
+    sourceDepSet = {}
+    if len(sourceDeps) > 0:
+        nextDepth = depth+1
+        depStart = 0
+        i = 1
+        for d in sourceDeps[1:]:
+            currentDepth = d[0]
+            if currentDepth <= nextDepth:
+                sourceDepSet[sourceDeps[depStart][1]] = (depStart+1, i+1)
+                depStart = i
+            i += 1
+        sourceDepSet[sourceDeps[depStart][1]] = (depStart+1, len(sourceDeps))
+
+    # Builds a tree based on each dependency found, and they build their own trees
+    # based on how we split up the list
+    for name in headerDepSet:
+        depRange = headerDepSet[name]
+        tree[1].append(buildDepTree(depth+1, name, deps[depRange[0]:depRange[1]]))
+
+    # Same, but only adds in stuff not found in the header.
+    for name in sourceDepSet:
+        if not name in headerDepSet and not name == headerFile:
+            depRange = sourceDepSet[name]
+            tree[1].append(buildDepTree(depth+1, name, sourceDeps[depRange[0]:depRange[1]]))
+
+    return tree
 
 # Starts off the building process
-def build():
-	# Converts each line of raw string data into a list of depth and dependency pairs
-	deps = dependencies(mainSource)
-	deps = [d.split(" ") for d in deps]
-	deps = [(len(depth), path) for depth, path in deps]
+def build(mainSource, exeFile):
+    global mainHeader
+    mainHeader = headerDir + mainSource[len(sourceDir):-len(sourceExt)] + headerExt
 
-	#   Builds dependency tree. Adding (0, mainHeader) guarantees that the list follows
-	# the rules specified in the function documentation
-	tree = buildDepTree([(0, mainHeader)] + deps)
+    #   Builds dependency tree. Adding (0, mainHeader) guarantees that the list follows
+    # the rules specified in the function documentation
+    print c.blu+c.bold + "\nGenerating dependency tree..." + c.end
+    tree = buildDepTree([(0, mainHeader)] + deps)
+    if (os.path.exists(mainHeader)):
+        tree = buildDepTree(0, mainHeader, dependencies(mainHeader))
+    else:
+        tree = buildDepTree(0, mainHeader, dependencies(mainSource))
 
-	objectList = []
-	buildFailed = buildTree(tree, objectList)
+    objectList = []
+    buildFailed = buildTree(tree, objectList)
 
-	if buildFailed:
-		printc(c.ylw+c.bold, "\nBuilding failed!")
-		printc(c.ylw+c.bold, "Skipping executable generation")
-	else:
-		needsCompiling = False
-		if not os.path.exists(exeFile):
-			needsCompiling = True
-		elif os.path.getmtime(mainObject) > os.path.getmtime(exeFile):
-			needsCompiling = True
+    if buildFailed:
+        print c.ylw+c.bold + "\nBuilding failed!" + c.end
+        print c.ylw+c.bold + "Skipping executable generation" + c.end
+    else:
+        needsCompiling = False
+        if not os.path.exists(exeFile):
+            needsCompiling = True
+        elif os.path.getmtime(mainObject) > os.path.getmtime(exeFile):
+            needsCompiling = True
 
-		if needsCompiling:
-			if not os.path.exists(exeDir):
-				os.path.makedirs(exeDir)
-			# Again, assumes that g++ standard is C++ 11
-			printc(c.cyn+c.bold, "\nGenerating executable... ")
-			cmd = "g++ " + flags + " -o " + exeFile +  " " + " ".join(objectList)
-			printc(c.cyn+c.bold, "Running: " + cmd)
-			call(cmd.split(" "))
-		else:
-			# Skips building if nothing was updated.
-			printc (c.grn+c.bold, "\nEverything up to date!")
-			printc (c.grn+c.bold, "Skipping executable generation")
+        if needsCompiling:
+            if not os.path.exists(exeDir):
+                os.path.makedirs(exeDir)
+            # Again, assumes that g++ standard is C++ 11
+            print c.cyn+c.bold + "\nGenerating executable... " + c.end
+            cmd = "g++ " + flags + " -o " + exeFile +  " " + " ".join(objectList)
+            print c.cyn+c.bold + "Running: " + cmd + c.end
+            call(cmd.split(" "))
+        else:
+            # Skips building if nothing was updated.
+            print c.grn+c.bold + "\nEverything up to date!" + c.end
+            print c.grn+c.bold + "Skipping executable generation" + c.end
 
 """
-	Calls 'g++ -c' on the given source file and directs it to the given object file location.
+    Calls 'g++ -c' on the given source file and directs it to the given object file location.
 Assumes project standard will be C++ 11. If the path for the object file doesn't exist, a new
 directory structure will be created for it.
 """
 def buildObject(sourceFile, objectFile):
-	buildDir = "/".join(objectFile.split("/")[:-1])
-	if not os.path.exists(buildDir):
-		os.makedirs(buildDir)
-	cmd = "g++ " + flags + " -c -I" + headerDir + " " + otherIncludes + " " + sourceFile + " -o " + objectFile
-	printc (c.bold, "Running: " + cmd)
-	ret = shell (cmd)
-	ret.wait()
-	msg = ret.stdout.read()
-	if len(msg) > 0:
-		color = ''
-		if ret.returncode == 0:
-			color = c.ylw
-		else:
-			color = c.red
-		printc(color, msg)
-	return ret.returncode
+    buildDir = "/".join(objectFile.split("/")[:-1])
+    if not os.path.exists(buildDir):
+        os.makedirs(buildDir)
+    cmd = "g++ " + flags + " -c -I" + headerDir + " " + otherIncludes + " " + sourceFile + " -o " + objectFile
+    print c.bold + "Running: " + c.end + cmd
+    ret = shell (cmd)
+    ret.wait()
+    msg = ret.stdout.read()
+    if len(msg) > 0:
+        color = ''
+        if ret.returncode == 0:
+            color = c.ylw
+        else:
+            color = c.red
+        print color + msg + c.end
+    return ret.returncode
 
 """ 
-	Recursively builds source files in the tree. Basically it's assumed that not
+    Recursively builds source files in the tree. Basically it's assumed that not
 every header will have a source file, but every source file (excluding the main file)
 there will be a corresponding header file. isUpdated is a map that tracks what files have been 
 visited already, and if they have, what is the latest modify date between it's header file and
@@ -182,90 +202,75 @@ its dependencies, useful to track if there are multiple things that depend on th
 will skip re-checking that dependency branch
 """
 def buildTree(tree, objectList, isUpdated={}):
-	if not tree:
-		return False
+    if not tree:
+        return False
 
-	""" 
-		This check is important in case mainHeader is listed twice in a row, which is the case
-	if a header file for main actually exists (go look at the build() function for the why), if
-	there isn't a main header in the include folder then this won't matter.
-	"""
-	if tree[0] == mainHeader:
-		foundHeader = False
-		for dep in tree[1]:
-			if dep[0] == mainHeader:
-				foundHeader = True
-				break
-		if foundHeader:
-			buildFailed = False
-			for dep in tree[1]:
-				buildFailed = buildFailed or buildTree(dep, objectList, isUpdated, lastBuild)
-			return buildFailed
+    # Needed in case multiple files depend on the same thing
+    if tree[0] in isUpdated:
+        return
 
-	# Needed in case multiple files depend on the same thing
-	if tree[0] in isUpdated:
-		return
+    # Makes up source files 
+    headerFile = tree[0]
+    sourceFile = sourceDir + headerFile[len(headerDir):-len(headerExt)] + sourceExt
+    objectFile = objectDir + headerFile[len(headerDir):-len(headerExt)] + objectExt
 
-	# Makes up source files 
-	headerFile = tree[0]
-	sourceFile = sourceDir + headerFile[len(headerDir):-len(headerExt)] + sourceExt
-	objectFile = objectDir + headerFile[len(headerDir):-len(headerExt)] + objectExt
+    # Gets modified time for header file, or sets to 0 if there's no header (such as for main source file)
+    headerFileTime = 0
+    if os.path.exists(headerFile):
+        headerFileTime = os.path.getmtime(headerFile)
 
-	# Gets modified time for header file, or sets to 0 if there's no header (such as for main source file)
-	headerFileTime = 0
-	if os.path.exists(headerFile):
-		headerFileTime = os.path.getmtime(headerFile)
+    needsBuilding = False
+    lastBuild = 0
+    if os.path.exists(sourceFile):
+        sourceFileTime = os.path.getmtime(sourceFile)
+        # If source file exists then we will be adding a corresponding object file to the file list.
+        objectList.append(objectFile)
+        # If there's no object file then we will need to make one (lastBuild=0 tells its dependencies that this will be freshly built)
+        if os.path.exists(objectFile):
+            # Otherwise we need to compare this object file to the header and source files to see if it needs building
+            lastBuild = os.path.getmtime(objectFile)
+            if lastBuild < sourceFileTime:
+                needsBuilding = True
+        else:
+            lastBuild = 0
 
-	needsBuilding = False
-	lastBuild = 0
-	if os.path.exists(sourceFile):
-		sourceFileTime = os.path.getmtime(sourceFile)
-		# If source file exists then we will be adding a corresponding object file to the file list.
-		objectList.append(objectFile)
-		# If there's no object file then we will need to make one (lastBuild=0 tells its dependencies that this will be freshly built)
-		if os.path.exists(objectFile):
-			# Otherwise we need to compare this object file to the header and source files to see if it needs building
-			lastBuild = os.path.getmtime(objectFile)
-			if lastBuild < sourceFileTime:
-				needsBuilding = True
-		else:
-			lastBuild = 0
+    buildFailed = False
+    latestModifyTime = headerFileTime
+    for dep in tree[1]:
+        # Recursively builds dependencies before building itself. 
+        buildFailed = buildFailed or buildTree(dep, objectList, isUpdated)
+        # If any of the dependencies are newer then mark this for updating
+        if isUpdated[dep[0]] > latestModifyTime:
+            latestModifyTime = isUpdated[dep[0]]
 
-	buildFailed = False
-	latestModifyTime = headerFileTime
-	for dep in tree[1]:
-		# Recursively builds dependencies before building itself. 
-		buildFailed = buildFailed or buildTree(dep, objectList, isUpdated)
-		# If any of the dependencies are newer then mark this for updating
-		if isUpdated[dep[0]] > latestModifyTime:
-			latestModifyTime = isUpdated[dep[0]]
+    if latestModifyTime > lastBuild:
+        needsBuilding = True
 
-	if latestModifyTime > lastBuild:
-		needsBuilding = True
+    # Now tells anyone who checks this map whether it was marked as updated
+    isUpdated[headerFile] = latestModifyTime
 
-	# Now tells anyone who checks this map whether it was marked as updated
-	isUpdated[headerFile] = latestModifyTime
+    if buildFailed:
+        print c.ylw + "Skipping (build dependencies failed): " + objectFile + c.end
+        return buildFailed
 
-	if buildFailed:
-		printc(c.ylw, "Skipping (build dependencies failed): " + objectFile)
-		return buildFailed
+    if os.path.exists(sourceFile):
+        # If this header has a source file, build it if it needs building
+        if needsBuilding:
+            if buildObject(sourceFile, objectFile) != 0:
+                buildFailed = True
+        else:
+            print c.grn + "Skipping (up to date):                " + objectFile + c.end
 
-	if os.path.exists(sourceFile):
-		# If this header has a source file, build it if it needs building
-		if needsBuilding:
-			if buildObject(sourceFile, objectFile) != 0:
-				buildFailed = True
-		else:
-			printc(c.grn, "Skipping (up to date):                " + objectFile)
-
-	return buildFailed
+    return buildFailed
 
 
 if target == "build":
-	build()
+    build(mainSource, exeFile)
 
 elif target == "clean":
-	if os.path.exists(objectDir):
-		shutil.rmtree(objectDir)
-	if os.path.exists(exeFile):
-		os.remove(exeFile)
+    if os.path.exists(objectDir):
+        print c.mgt + "Removing " + objectDir + "..." + c.end
+        shutil.rmtree(objectDir)
+    if os.path.exists(exeFile):
+        print c.mgt + "Removing " + exeFile + "..." + c.end
+        os.remove(exeFile)

@@ -138,7 +138,7 @@ def build(mainSource, exeFile):
     #   Builds dependency tree. Adding (0, mainHeader) guarantees that the list follows
     # the rules specified in the function documentation
     print c.blu+c.bold + "\nGenerating dependency tree..." + c.end
-    tree = buildDepTree([(0, mainHeader)] + deps)
+    tree = []
     if (os.path.exists(mainHeader)):
         tree = buildDepTree(0, mainHeader, dependencies(mainHeader))
     else:
@@ -209,12 +209,13 @@ def buildTree(tree, objectList, isUpdated={}):
     if tree[0] in isUpdated:
         return
 
-    # Makes up source files 
+    # Makes up source files
     headerFile = tree[0]
     sourceFile = sourceDir + headerFile[len(headerDir):-len(headerExt)] + sourceExt
     objectFile = objectDir + headerFile[len(headerDir):-len(headerExt)] + objectExt
 
-    # Gets modified time for header file, or sets to 0 if there's no header (such as for main source file)
+    # Gets modified time for header file, or sets to 0 if there's no header
+    # (such as the main source file)
     headerFileTime = 0
     if os.path.exists(headerFile):
         headerFileTime = os.path.getmtime(headerFile)
@@ -223,25 +224,30 @@ def buildTree(tree, objectList, isUpdated={}):
     lastBuild = 0
     if os.path.exists(sourceFile):
         sourceFileTime = os.path.getmtime(sourceFile)
-        # If source file exists then we will be adding a corresponding object file to the file list.
+        # If source file exists then we will be adding a corresponding
+        # object file to the file list.
         objectList.append(objectFile)
-        # If there's no object file then we will need to make one (lastBuild=0 tells its dependencies that this will be freshly built)
+        # If there's no object file then we will need to make one (lastBuild=0 tells its
+        # dependencies that this will be freshly built)
         if os.path.exists(objectFile):
-            # Otherwise we need to compare this object file to the header and source files to see if it needs building
+            # Otherwise we need to compare this object file to the header
+            # and source files to see if it needs building
             lastBuild = os.path.getmtime(objectFile)
             if lastBuild < sourceFileTime:
                 needsBuilding = True
         else:
+            needsBuilding = True
             lastBuild = 0
 
     buildFailed = False
     latestModifyTime = headerFileTime
     for dep in tree[1]:
-        # Recursively builds dependencies before building itself. 
+        # Recursively builds dependencies before building itself.
         buildFailed = buildFailed or buildTree(dep, objectList, isUpdated)
         # If any of the dependencies are newer then mark this for updating
         if isUpdated[dep[0]] > latestModifyTime:
             latestModifyTime = isUpdated[dep[0]]
+
 
     if latestModifyTime > lastBuild:
         needsBuilding = True
@@ -262,7 +268,6 @@ def buildTree(tree, objectList, isUpdated={}):
             print c.grn + "Skipping (up to date):                " + objectFile + c.end
 
     return buildFailed
-
 
 if target == "build":
     build(mainSource, exeFile)

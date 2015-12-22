@@ -137,7 +137,7 @@ def build(mainSource, exeFile):
 
     #   Builds dependency tree. Adding (0, mainHeader) guarantees that the list follows
     # the rules specified in the function documentation
-    print c.blu+c.bold + "\nGenerating dependency tree..." + c.end
+    print c.blu+c.bold + "\nGenerating dependency tree for " + mainSource + "..." + c.end
     tree = []
     if (os.path.exists(mainHeader)):
         tree = buildDepTree(0, mainHeader, dependencies(mainHeader))
@@ -145,30 +145,57 @@ def build(mainSource, exeFile):
         tree = buildDepTree(0, mainHeader, dependencies(mainSource))
 
     objectList = []
-    buildFailed = buildTree(tree, objectList)
+    buildFailed = buildTree(tree, objectList, {})
 
     if buildFailed:
         print c.ylw+c.bold + "\nBuilding failed!" + c.end
         print c.ylw+c.bold + "Skipping executable generation" + c.end
+        print c.ylw        + "------------------------------" + c.end
     else:
+        print ""
         needsCompiling = False
         if not os.path.exists(exeFile):
             needsCompiling = True
-        elif os.path.getmtime(mainObject) > os.path.getmtime(exeFile):
-            needsCompiling = True
+            print c.mgt+c.bold + "The file " + exeFile + " doesn't exist" + c.end
+        else:
+            for obj in objectList:
+                if os.path.getmtime(obj) > os.path.getmtime(exeFile):
+                    needsCompiling = True
+                    print c.mgt+c.bold + "The file " + exeFile + " out of date" + c.end
+                    break
 
         if needsCompiling:
             if not os.path.exists(exeDir):
-                os.path.makedirs(exeDir)
+                os.makedirs(exeDir)
             # Again, assumes that g++ standard is C++ 11
-            print c.cyn+c.bold + "\nGenerating executable... " + c.end
-            cmd = "g++ " + flags + " -o " + exeFile +  " " + " ".join(objectList)
-            print c.cyn+c.bold + "Running: " + cmd + c.end
-            call(cmd.split(" "))
+            print c.cyn+c.bold + "Generating executable... " + c.end
+            cmd = ("g++ " + flags + " -o " + exeFile + " " + " ".join(objectList))
+            print c.cyn+c.bold + "Running: " + c.end + c.cyn + cmd + c.end
+            print ""
+            ret = shell (cmd)
+            ret.wait()
+            msg = ret.stdout.read()
+            if len(msg) > 0:
+                color = ''
+                if ret.returncode == 0:
+                    print c.ylw + msg + c.end
+                    print c.ylw+c.bold + "Compilation finished with warnings" + c.end
+                    print c.ylw        + "----------------------------------" + c.end
+                else:
+                    print c.red + msg + c.end
+                    print c.red+c.bold + "Compilation failed" + c.end
+                    print c.red        + "------------------" + c.end
+            else:
+                print c.blu+c.bold + "Compilation succeeded" + c.end
+                print c.blu        + "---------------------" + c.end
+
+
+
         else:
             # Skips building if nothing was updated.
             print c.grn+c.bold + "\nEverything up to date!" + c.end
             print c.grn+c.bold + "Skipping executable generation" + c.end
+            print c.grn        + "------------------------------" + c.end
 
 """
     Calls 'g++ -c' on the given source file and directs it to the given object file location.

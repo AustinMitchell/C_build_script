@@ -3,26 +3,68 @@ from typing import List
 import shutil
 import os
 import sys
+import yaml
+import io
+import argparse
 
+
+DEFAULT_CONFIG = """\
+FLAGS: "-std=c++17 -Wall -Wextra"
+
+EXE_DIR: "./bin"
+EXE_FILE: "./bin/run.exe"
+
+SOURCE_DIR: "./src/"
+SOURCE_EXT: ".cc"
+HEADER_DIR: "./include/"
+HEADER_EXT: ".h"
+OBJECT_DIR: "./build/"
+OBJECT_EXT: ".o"
+
+OTHER_INCLDES: "-I./lib/"
+"""
 
 class config:
-    FLAGS = "-std=c++17 -Wall -Wextra"
+    FLAGS:str
 
-    EXE_DIR  = "./bin"
-    EXE_FILE = "./bin/run.exe"
+    EXE_DIR: str
+    EXE_FILE: str
 
-    SOURCE_DIR = "./src/"
-    SOURCE_EXT = ".cc"
-    HEADER_DIR = "./include/"
-    HEADER_EXT = ".h"
-    OBJECT_DIR = "./build/"
-    OBJECT_EXT = ".o"
+    SOURCE_DIR: str
+    SOURCE_EXT: str
+    HEADER_DIR: str
+    HEADER_EXT: str
+    OBJECT_DIR: str
+    OBJECT_EXT: str
 
-    OTHER_INCLDES = "-I./lib/"
+    OTHER_INCLDES: str
 
-    MAIN_SOURCE = SOURCE_DIR + "main" + SOURCE_EXT
-    MAIN_HEADER = HEADER_DIR + MAIN_SOURCE[len(SOURCE_DIR):-len(SOURCE_EXT)] + HEADER_EXT
-    MAIN_OBJECT = OBJECT_DIR + MAIN_SOURCE[len(SOURCE_DIR):-len(SOURCE_EXT)] + OBJECT_EXT
+    MAIN_SOURCE: str
+    MAIN_HEADER: str
+    MAIN_OBJECT: str
+
+    @classmethod
+    def construct(cls, input):
+        config_file = yaml.safe_load(input.read())
+        print(config_file)
+
+        config.FLAGS = config_file["FLAGS"]
+
+        config.EXE_DIR  = config_file["EXE_DIR"]
+        config.EXE_FILE = config_file["EXE_FILE"]
+
+        config.SOURCE_DIR = config_file["SOURCE_DIR"]
+        config.SOURCE_EXT = config_file["SOURCE_EXT"]
+        config.HEADER_DIR = config_file["HEADER_DIR"]
+        config.HEADER_EXT = config_file["HEADER_EXT"]
+        config.OBJECT_DIR = config_file["OBJECT_DIR"]
+        config.OBJECT_EXT = config_file["OBJECT_EXT"]
+
+        config.OTHER_INCLDES = config_file["OTHER_INCLDES"]
+
+        config.MAIN_SOURCE = f"{config.SOURCE_DIR}main{config.SOURCE_EXT}"
+        config.MAIN_HEADER = config.HEADER_DIR + config.MAIN_SOURCE[len(config.SOURCE_DIR):-len(config.SOURCE_EXT)] + config.HEADER_EXT
+        config.MAIN_OBJECT = config.OBJECT_DIR + config.MAIN_SOURCE[len(config.SOURCE_DIR):-len(config.SOURCE_EXT)] + config.OBJECT_EXT
 
 
 class Colour:
@@ -36,22 +78,23 @@ class Style:
 
 
 class colours:
-    NIL = Style('')
-    BLK = Colour('\033[90m')
-    RED = Colour('\033[91m')
-    GRN = Colour('\033[92m')
-    YLW = Colour('\033[93m')
-    BLU = Colour('\033[94m')
-    MGT = Colour('\033[95m')
-    CYN = Colour('\033[96m')
-    WHT = Colour('\033[97m')
+    NIL = Style('')           # No change
+    BLK = Colour('\033[90m')  # Black
+    RED = Colour('\033[91m')  # Red
+    GRN = Colour('\033[92m')  # Green
+    YLW = Colour('\033[93m')  # Yellow
+    BLU = Colour('\033[94m')  # Blue
+    MGT = Colour('\033[95m')  # Magenta
+    CYN = Colour('\033[96m')  # Cyan
+    WHT = Colour('\033[97m')  # White
 
 
 class styles:
-    NIL = Style('')
-    END = Style('\033[0m')
-    BLD = Style('\033[1m')
-    ULN = Style('\033[4m')
+    NIL = Style('')         # No change
+    END = Style('\033[0m')  # Remove all changes (including color)
+    BLD = Style('\033[1m')  # Bold
+    ULN = Style('\033[4m')  # Underlined
+    ALL = Style('\033[1m' + '\033[4m')  # Bold+underlined
 
 
 def colour_print(message: str,
@@ -71,14 +114,17 @@ def shell(cmd: str) -> Popen:
     """
     Executes a command on the shell using Popen and returns the object created 
     """
+
     return Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
 
 
 def dependencies(filePath: str) -> List[str]:
-    """ Generates a list of dependencies using g++ -H, only using dependencies from your include
+    """
+    Generates a list of dependencies using g++ -H, only using dependencies from your include
     directory.
     """
-    cmd = "g++ " + config.FLAGS + " -H -I" + config.HEADER_DIR + " " + filePath
+
+    cmd = f"g++ {config.FLAGS} -H -I{config.HEADER_DIR} {filePath}"
     deps = [s for s in shell(cmd).stdout.read().split("\n") if len(s) > 0 and s[0] == "."]
     deps = [s.strip() for s in deps if config.HEADER_DIR in s]
 
@@ -170,7 +216,7 @@ def build(mainSource, exeFile):
 
     #   Builds dependency tree. Adding (0, mainHeader) guarantees that the list follows
     # the rules specified in the function documentation
-    colour_print("\nGenerating dependency tree for " + mainSource + "...", colour=colours.BLU, style=styles.BLD)
+    colour_print(f"\nGenerating dependency tree for {mainSource}...", colour=colours.BLU, style=styles.BLD)
     tree = []
     if (os.path.exists(config.mainHeader)):
         tree = build_dep_tree(0, config.MAIN_HEADER, dependencies(config.MAIN_HEADER))
@@ -189,19 +235,19 @@ def build(mainSource, exeFile):
         needsCompiling = False
         if not os.path.exists(exeFile):
             needsCompiling = True
-            colour_print("The file " + exeFile + " doesn't exist", colour=colours.MGT, style=styles.BLD)
+            colour_print(f"The file {exeFile} doesn't exist", colour=colours.MGT, style=styles.BLD)
         else:
             for obj in objectList:
                 if os.path.getmtime(obj) > os.path.getmtime(exeFile):
                     needsCompiling = True
-                    colour_print("The file " + exeFile + " out of date", colour=colours.MGT, style=styles.BLD)
+                    colour_print(f"The file {exeFile} out of date", colour=colours.MGT, style=styles.BLD)
                     break
 
         if needsCompiling:
             if not os.path.exists(config.EXE_DIR):
                 os.makedirs(config.EXE_DIR)
 
-            cmd = ("g++ " + config.FLAGS + " -o " + exeFile + " " + " ".join(objectList))
+            cmd = (f"g++ {config.FLAGS} -o {exeFile} {' '.join(objectList)}")
 
             colour_print("Generating executable... ", colour=colours.CYN, style=styles.BLD)
             colour_print("Running: ", colour=colours.CYN, style=styles.BLD, end='')
@@ -242,7 +288,7 @@ def build_object(sourceFile, objectFile):
     if not os.path.exists(buildDir):
         os.makedirs(buildDir)
 
-    cmd = "g++ " + config.FLAGS + " -c -I" + config.HEADER_DIR + " " + config.OTHER_INCLDES + " " + sourceFile + " -o " + objectFile
+    cmd = f"g++ {config.FLAGS} -c -I{config.HEADER_DIR} {config.OTHER_INCLDES} {sourceFile} -o {objectFile}"
     colour_print("Running: ", style=styles.BLD, end='')
     colour_print(cmd)
 
@@ -323,7 +369,7 @@ def build_tree(tree, objectList, isUpdated={}):
     isUpdated[headerFile] = latestModifyTime
 
     if buildFailed:
-        colour_print("Skipping (build dependencies failed): " + objectFile, colour=colours.YLW)
+        colour_print(f"Skipping (build dependencies failed): {objectFile}", colour=colours.YLW)
         return buildFailed
 
     if os.path.exists(sourceFile):
@@ -332,15 +378,35 @@ def build_tree(tree, objectList, isUpdated={}):
             if build_object(sourceFile, objectFile) != 0:
                 buildFailed = True
         else:
-            colour_print("Skipping (up to date):                " + objectFile, colour=colours.GRN)
+            colour_print(f"Skipping (up to date):                {objectFile}", colour=colours.GRN)
 
     return buildFailed
 
 if __name__ == "__main__":
-    print("")
-    colour_print("Configuration", style=styles.BLD)
-    colour_print("-------------", style=styles.BLD)
 
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("target", choices=['build', 'clean'])
+    argparser.add_argument("--config", required=False, type=str)
+    args = argparser.parse_args()
+
+    if args.config:
+        if not os.path.exists(args.config):
+            colour_print(f"File '{args.config}' does not exist. Aborting.", colour=colours.RED, style=styles.BLD, end='')
+            sys.exit(1)
+
+        colour_print("Constructing configuration from file ", end='')
+        colour_print(args.config, style=styles.BLD)
+        with open(args.config) as f:
+            config.construct(f)
+    else:
+        colour_print("Constructing configuration from DEFAULT_CONFIG")
+        with io.StringIO() as f:
+            f.write(DEFAULT_CONFIG)
+            f.seek(0)
+            config.construct(f)
+
+    print("")
+    colour_print("Configuration", style=styles.ALL)
     colour_print("    EXE directory:    ", colour=colours.YLW, style=styles.BLD, end='')
     colour_print(config.EXE_DIR,  colour=colours.YLW)
     colour_print("    EXE file:         ", colour=colours.YLW, style=styles.BLD, end='')
@@ -371,15 +437,14 @@ if __name__ == "__main__":
     colour_print("    Main object:      ", colour=colours.RED, style=styles.BLD, end='')
     colour_print(config.MAIN_OBJECT, colour=colours.RED)
 
-    target = sys.argv[1]
     colour_print("")
     colour_print("Running target ", colour=colours.WHT, end='')
-    colour_print(target, colour=colours.WHT, style=styles.BLD)
+    colour_print(args.target, colour=colours.WHT, style=styles.BLD)
 
-    if target == "build":
+    if args.target == "build":
         build(config.MAIN_SOURCE, config.EXE_FILE)
 
-    elif target == "clean":
+    elif args.target == "clean":
         if os.path.exists(config.OBJECT_DIR):
             colour_print("Removing " + config.OBJECT_DIR + "...", colour=colours.MGT)
             shutil.rmtree(config.OBJECT_DIR)

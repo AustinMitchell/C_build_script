@@ -1,5 +1,6 @@
 from subprocess import Popen, PIPE, STDOUT
-from typing import List
+from typing import List, Tuple, Any, Generator, Iterator
+from pathlib import Path
 import shutil
 import os
 import sys
@@ -9,22 +10,24 @@ import argparse
 
 
 DEFAULT_CONFIG = """\
+COMPILER: "clang++"
 FLAGS: "-std=c++17 -Wall -Wextra"
 
 EXE_DIR: "./bin"
-EXE_FILE: "./bin/run.exe"
+EXE_FILE: "a.out"
 
 SOURCE_DIR: "./src/"
-SOURCE_EXT: ".cc"
+SOURCE_EXT: "cc"
 HEADER_DIR: "./include/"
-HEADER_EXT: ".h"
+HEADER_EXT: "h"
 OBJECT_DIR: "./build/"
-OBJECT_EXT: ".o"
+OBJECT_EXT: "o"
 
-OTHER_INCLDES: "-I./lib/"
+OTHER_INCLUDES: "-I./lib/"
 """
 
 class config:
+    COMPILER:str
     FLAGS:str
 
     EXE_DIR: str
@@ -37,7 +40,7 @@ class config:
     OBJECT_DIR: str
     OBJECT_EXT: str
 
-    OTHER_INCLDES: str
+    OTHER_INCLUDES: str
 
     MAIN_SOURCE: str
     MAIN_HEADER: str
@@ -48,6 +51,7 @@ class config:
         config_file = yaml.safe_load(input.read())
         print(config_file)
 
+        config.COMPILER = config_file["COMPILER"]
         config.FLAGS = config_file["FLAGS"]
 
         config.EXE_DIR  = config_file["EXE_DIR"]
@@ -60,11 +64,7 @@ class config:
         config.OBJECT_DIR = config_file["OBJECT_DIR"]
         config.OBJECT_EXT = config_file["OBJECT_EXT"]
 
-        config.OTHER_INCLDES = config_file["OTHER_INCLDES"]
-
-        config.MAIN_SOURCE = f"{config.SOURCE_DIR}main{config.SOURCE_EXT}"
-        config.MAIN_HEADER = config.HEADER_DIR + config.MAIN_SOURCE[len(config.SOURCE_DIR):-len(config.SOURCE_EXT)] + config.HEADER_EXT
-        config.MAIN_OBJECT = config.OBJECT_DIR + config.MAIN_SOURCE[len(config.SOURCE_DIR):-len(config.SOURCE_EXT)] + config.OBJECT_EXT
+        config.OTHER_INCLUDES = config_file["OTHER_INCLUDES"]
 
 
 class Colour:
@@ -78,7 +78,7 @@ class Style:
 
 
 class colours:
-    NIL = Style('')           # No change
+    NIL = Colour('')          # No change
     BLK = Colour('\033[90m')  # Black
     RED = Colour('\033[91m')  # Red
     GRN = Colour('\033[92m')  # Green
@@ -94,7 +94,7 @@ class styles:
     END = Style('\033[0m')  # Remove all changes (including color)
     BLD = Style('\033[1m')  # Bold
     ULN = Style('\033[4m')  # Underlined
-    ALL = Style('\033[1m' + '\033[4m')  # Bold+underlined
+    ALL = Style('\033[1m\033[4m')  # Bold+underlined
 
 
 def colour_print(message: str,
@@ -106,148 +106,82 @@ def colour_print(message: str,
     Prints a message with the given colour and style, if your shell supports ANSI codes
     """
     resetColor = styles.END.val if reset else ''
-    print(colour.val + style.val + message + resetColor, **kwargs)
+    print(f"{colour.val}{style.val}{message}{resetColor}", **kwargs)
         
 
 
-def shell(cmd: str) -> Popen:
+def shell(cmd: str, stdout=None) -> Popen:
     """
     Executes a command on the shell using Popen and returns the object created 
     """
 
-    return Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
+    return Popen(cmd, shell=True, stdin=PIPE, stdout=stdout, stderr=None)
 
 
-def dependencies(filePath: str) -> List[str]:
+def source_files() -> Generator[Path, None, None]:
     """
-    Generates a list of dependencies using g++ -H, only using dependencies from your include
-    directory.
+    Creates a generator of all files in the project with the source extension set in the config.
+    """
+    return Path(config.SOURCE_DIR).rglob(f"*.{config.SOURCE_EXT}")
+
+
+def source_to_object(source:Path) -> Path:
+    return Path(config.OBJECT_DIR).joinpath(Path(source).relative_to(config.SOURCE_DIR).parent, f"{Path(source).stem}.{config.OBJECT_EXT}")
+
+def dependencies(file: Path) -> Generator[Path, None, None]:
+    """
+    Generates a list of non-system dependencies to a source file using -MM
     """
 
-    cmd = f"g++ {config.FLAGS} -H -I{config.HEADER_DIR} {filePath}"
-    deps = [s for s in shell(cmd).stdout.read().split("\n") if len(s) > 0 and s[0] == "."]
-    deps = [s.strip() for s in deps if config.HEADER_DIR in s]
+    # This will create a string of all the non-system dependencies for our source file separated by spaces
+    cmd = f"{config.COMPILER} {config.FLAGS} -MM -I{config.HEADER_DIR} {file}"
+    deps = str(shell(cmd, stdout=PIPE).stdout.read()).split(" ")
 
-    filedeps = []
-    for d in deps:
-        dSplit = d.split(" ")
-        if dSplit[0][len(dSplit[0])-1] == ".":
-            filedeps.append((len(dSplit[0]), dSplit[1]))
+    del deps[:2] # first two outputs will be the name of the .o file that would be made and the name of the source file. Delete them.
 
-    return filedeps
+    return (Path(dep) for dep in deps if Path(dep).suffix == config.HEADER_EXT)
 
 
-def build_dep_tree(depth: int, headerFile: str, deps: List[str]):
-    """ Builds a dependency tree, takes in a headerfile name and makes a tree in order of how
-    they should be built, using header and source dependencies.
-    """
-    # Basic tree. First item is the dep name, the second is a list, where each item
-    # is a tuple where the first item is a name, and the second is a list. Recursive
-    # tree based on a python list.
-    tree = [headerFile, []]
-
-    # In this project we assume either header files are stand-alone, or have a
-    # corresponding source file which includes the header file, but may also include
-    # things that aren't included in the header file, so that stuff needs to be added
-    # to the tree so we can see if the source needs building based on ALL dependencies.
-    sourceFile = config.SOURCE_DIR + headerFile[len(config.HEADER_DIR):-len(config.HEADER_EXT)] + config.SOURCE_EXT
-    sourceDeps = []
-    if (os.path.exists(sourceFile)):
-        sourceDeps = dependencies(sourceFile)
-        sourceDeps = [[d+depth, name] for d, name in sourceDeps]
-
-    # Returns the basic structure if there are no dependencies.
-    if not deps and not sourceDeps:
-        return tree
-    # Returns the basic structure with one dependency if theres only one between the
-    # two lists.
-    if len(deps)+len(sourceDeps) == 1:
-        tree[1].append([(deps+sourceDeps)[0][1], []])
-        return tree
-
-    # This is a dictionary whose keys are dependency names, and values are a tuple where
-    # the first item is the beginning of the headers dependencies in the list, and the
-    # second is the end. Basically just splitting the list into groups, searchable by name
-    headerDepSet = {}
-    if len(deps) > 0:
-        nextDepth = depth+1
-        depStart = 0
-        i = 1
-        for d in deps[1:]:
-            currentDepth = d[0]
-            if currentDepth <= nextDepth:
-                headerDepSet[deps[depStart][1]] = (depStart+1, i+1)
-                depStart = i
-            i += 1
-        headerDepSet[deps[depStart][1]] = (depStart+1, len(deps))
-
-    # This is the same but for source deps.
-    sourceDepSet = {}
-    if len(sourceDeps) > 0:
-        nextDepth = depth+1
-        depStart = 0
-        i = 1
-        for d in sourceDeps[1:]:
-            currentDepth = d[0]
-            if currentDepth <= nextDepth:
-                sourceDepSet[sourceDeps[depStart][1]] = (depStart+1, i+1)
-                depStart = i
-            i += 1
-        sourceDepSet[sourceDeps[depStart][1]] = (depStart+1, len(sourceDeps))
-
-    # Builds a tree based on each dependency found, and they build their own trees
-    # based on how we split up the list
-    for name in headerDepSet:
-        depRange = headerDepSet[name]
-        tree[1].append(build_dep_tree(depth+1, name, deps[depRange[0]:depRange[1]]))
-
-    # Same, but only adds in stuff not found in the header.
-    for name in sourceDepSet:
-        if name not in headerDepSet and not name == headerFile:
-            depRange = sourceDepSet[name]
-            tree[1].append(build_dep_tree(depth+1, name, sourceDeps[depRange[0]:depRange[1]]))
-
-    return tree
-
-
-def build(mainSource, exeFile):
+def build():
     """ Starts off the building process """
-    config.mainHeader = config.HEADER_DIR + config.MAIN_SOURCE[len(config.SOURCE_DIR):-len(config.SOURCE_EXT)] + config.HEADER_EXT
+
 
     #   Builds dependency tree. Adding (0, mainHeader) guarantees that the list follows
     # the rules specified in the function documentation
-    colour_print(f"\nGenerating dependency tree for {mainSource}...", colour=colours.BLU, style=styles.BLD)
-    tree = []
-    if (os.path.exists(config.mainHeader)):
-        tree = build_dep_tree(0, config.MAIN_HEADER, dependencies(config.MAIN_HEADER))
-    else:
-        tree = build_dep_tree(0, config.MAIN_HEADER, dependencies(mainSource))
+    object_building_success = True
+    linking_required = False
 
-    objectList = []
-    buildFailed = build_tree(tree, objectList, {})
+    print("")
+    print(f"Sources: {' '.join(str(s) for s in source_files())}")
+    print(f"Objects: {' '.join(str(source_to_object(s)) for s in source_files())}")
+    print("")
 
-    if buildFailed:
+    for source in source_files():
+        if test_source(source):
+            if build_object(source):
+                linking_required = True
+            else:
+                object_building_success = False
+                break
+        else:
+            colour_print(f"Skipping (up to date):                {source_to_object(source)}", colour=colours.GRN)
+
+    if not object_building_success:
         colour_print("\nBuilding failed!",             colour=colours.YLW, style=styles.BLD)
         colour_print("Skipping executable generation", colour=colours.YLW, style=styles.BLD)
         colour_print("------------------------------", colour=colours.YLW)
     else:
         print("")
-        needsCompiling = False
-        if not os.path.exists(exeFile):
-            needsCompiling = True
-            colour_print(f"The file {exeFile} doesn't exist", colour=colours.MGT, style=styles.BLD)
-        else:
-            for obj in objectList:
-                if os.path.getmtime(obj) > os.path.getmtime(exeFile):
-                    needsCompiling = True
-                    colour_print(f"The file {exeFile} out of date", colour=colours.MGT, style=styles.BLD)
-                    break
+        exe_full_path = Path(config.EXE_DIR).joinpath(config.EXE_FILE)
+        if not os.path.exists(exe_full_path):
+            linking_required = True
+            colour_print(f"The file {exe_full_path} doesn't exist.", colour=colours.MGT, style=styles.BLD)
 
-        if needsCompiling:
-            if not os.path.exists(config.EXE_DIR):
-                os.makedirs(config.EXE_DIR)
+        if linking_required:
+            # Build exe location folders
+            Path(Path(config.EXE_DIR)).mkdir(parents=True, exist_ok=True)
 
-            cmd = (f"g++ {config.FLAGS} -o {exeFile} {' '.join(objectList)}")
+            cmd = (f"{config.COMPILER} {config.FLAGS} -o {exe_full_path} {' '.join((str(source_to_object(s)) for s in source_files()))}")
 
             colour_print("Generating executable... ", colour=colours.CYN, style=styles.BLD)
             colour_print("Running: ", colour=colours.CYN, style=styles.BLD, end='')
@@ -256,17 +190,10 @@ def build(mainSource, exeFile):
 
             ret = shell(cmd)
             ret.wait()
-            msg = ret.stdout.read()
 
-            if msg:
-                if not ret.returncode:
-                    colour_print(msg,                                  colour=colours.YLW)
-                    colour_print("Compilation finished with warnings", colour=colours.YLW, style=styles.BLD)
-                    colour_print("----------------------------------", colour=colours.YLW)
-                else:
-                    colour_print(msg,                  colour=colours.RED)
-                    colour_print("Compilation failed", colour=colours.RED, style=styles.BLD)
-                    colour_print("------------------", colour=colours.RED)
+            if ret.returncode != 0:
+                colour_print("Compilation failed", colour=colours.RED, style=styles.BLD)
+                colour_print("------------------", colour=colours.RED)
             else:
                 colour_print("Compilation succeeded", colour=colours.BLU, style=styles.BLD)
                 colour_print("---------------------", colour=colours.BLU)
@@ -278,109 +205,55 @@ def build(mainSource, exeFile):
             colour_print("------------------------------", colour=colours.GRN)
 
 
-def build_object(sourceFile, objectFile):
+def build_object(source_file:Path) -> int:
     """
-    Calls 'g++ -c' on the given source file and directs it to the given object file location.
+    Compiles the given source file and directs it to the given object file location.
     If the path for the object file doesn't exist, a new directory structure will be created for it.
     """
 
-    buildDir = "/".join(objectFile.split("/")[:-1])
-    if not os.path.exists(buildDir):
-        os.makedirs(buildDir)
+    object_file = source_to_object(source_file)
 
-    cmd = f"g++ {config.FLAGS} -c -I{config.HEADER_DIR} {config.OTHER_INCLDES} {sourceFile} -o {objectFile}"
+    # If object file dir is missing, make it
+    Path(Path(object_file).parent).mkdir(parents=True, exist_ok=True)
+
+    cmd = f"{config.COMPILER} {config.FLAGS} -c -I{config.HEADER_DIR} {config.OTHER_INCLUDES} {source_file} -o {object_file}"
     colour_print("Running: ", style=styles.BLD, end='')
     colour_print(cmd)
 
     ret = shell (cmd)
     ret.wait()
-    msg = ret.stdout.read()
 
-    if msg:
-        finalcolour = None
-        if ret.returncode == 0:
-            finalcolour = colours.YLW
+    return ret.returncode == 0
+
+
+def test_source(source:Path) -> bool:
+    """
+    Checks to see if source file needs to be built
+    """
+
+    # constructs object file name from source file name
+    objectfile = source_to_object(source)
+
+    build_required = False
+    source_mtime = source.stat().st_mtime
+
+    if os.path.exists(objectfile):
+        object_mtime = objectfile.stat().st_mtime
+        if object_mtime < source_mtime:
+            # Source is newer than object file, compile
+            build_required = Truebuild/TreePrinter.o
         else:
-            finalcolour = colours.RED
-        colour_print(msg, colour=finalcolour)
+            # Check if any dependencies are newer than object file
+            for dep in dependencies(source):
+                if object_mtime < os.path.getmtime(dep):
+                    # Dependency is newer than object file, compile
+                    build_required = True
+                    break
+    else:
+        # Objectfile hasnt been made, we need to compile
+        build_required = True
 
-    return ret.returncode
-
-""" 
-    Recursively builds source files in the tree. Basically it's assumed that not
-every header will have a source file, but every source file (excluding the main file)
-there will be a corresponding header file. isUpdated is a map that tracks what files have been 
-visited already, and if they have, what is the latest modify date between it's header file and
-its dependencies, useful to track if there are multiple things that depend on the same thing,
-will skip re-checking that dependency branch
-"""
-def build_tree(tree, objectList, isUpdated={}):
-    if not tree:
-        return False
-
-    # Needed in case multiple files depend on the same thing
-    if tree[0] in isUpdated:
-        return
-
-    # Makes up source files
-    headerFile = tree[0]
-    sourceFile = config.SOURCE_DIR + headerFile[len(config.HEADER_DIR):-len(config.HEADER_EXT)] + config.SOURCE_EXT
-    objectFile = config.OBJECT_DIR + headerFile[len(config.HEADER_DIR):-len(config.HEADER_EXT)] + config.OBJECT_EXT
-
-    # Gets modified time for header file, or sets to 0 if there's no header
-    # (such as the main source file)
-    headerFileTime = 0
-    if os.path.exists(headerFile):
-        headerFileTime = os.path.getmtime(headerFile)
-
-    needsBuilding = False
-    lastBuild = 0
-    if os.path.exists(sourceFile):
-        sourceFileTime = os.path.getmtime(sourceFile)
-        # If source file exists then we will be adding a corresponding
-        # object file to the file list.
-        objectList.append(objectFile)
-        # If there's no object file then we will need to make one (lastBuild=0 tells its
-        # dependencies that this will be freshly built)
-        if os.path.exists(objectFile):
-            # Otherwise we need to compare this object file to the header
-            # and source files to see if it needs building
-            lastBuild = os.path.getmtime(objectFile)
-            if lastBuild < sourceFileTime:
-                needsBuilding = True
-        else:
-            needsBuilding = True
-            lastBuild = 0
-
-    buildFailed = False
-    latestModifyTime = headerFileTime
-    for dep in tree[1]:
-        # Recursively builds dependencies before building itself.
-        buildFailed = buildFailed or build_tree(dep, objectList, isUpdated)
-        # If any of the dependencies are newer then mark this for updating
-        if isUpdated[dep[0]] > latestModifyTime:
-            latestModifyTime = isUpdated[dep[0]]
-
-
-    if latestModifyTime > lastBuild:
-        needsBuilding = True
-
-    # Now tells anyone who checks this map whether it was marked as updated
-    isUpdated[headerFile] = latestModifyTime
-
-    if buildFailed:
-        colour_print(f"Skipping (build dependencies failed): {objectFile}", colour=colours.YLW)
-        return buildFailed
-
-    if os.path.exists(sourceFile):
-        # If this header has a source file, build it if it needs building
-        if needsBuilding:
-            if build_object(sourceFile, objectFile) != 0:
-                buildFailed = True
-        else:
-            colour_print(f"Skipping (up to date):                {objectFile}", colour=colours.GRN)
-
-    return buildFailed
+    return build_required
 
 if __name__ == "__main__":
 
@@ -428,28 +301,27 @@ if __name__ == "__main__":
     colour_print(config.OBJECT_EXT, colour=colours.BLU)
 
     colour_print("    Other includes:   ", colour=colours.MGT, style=styles.BLD, end='')
-    colour_print(config.OTHER_INCLDES, colour=colours.MGT)
+    colour_print(config.OTHER_INCLUDES, colour=colours.MGT)
 
-    colour_print("    Main source:      ", colour=colours.RED, style=styles.BLD, end='')
-    colour_print(config.MAIN_SOURCE, colour=colours.RED)
-    colour_print("    Main header:      ", colour=colours.RED, style=styles.BLD, end='')
-    colour_print(config.MAIN_HEADER, colour=colours.RED)
-    colour_print("    Main object:      ", colour=colours.RED, style=styles.BLD, end='')
-    colour_print(config.MAIN_OBJECT, colour=colours.RED)
+    colour_print("    Compiler:         ", colour=colours.RED, style=styles.BLD, end='')
+    colour_print(config.COMPILER, colour=colours.RED)
+    colour_print("    Compiler flags:   ", colour=colours.RED, style=styles.BLD, end='')
+    colour_print(config.FLAGS, colour=colours.RED)
 
     colour_print("")
     colour_print("Running target ", colour=colours.WHT, end='')
     colour_print(args.target, colour=colours.WHT, style=styles.BLD)
 
     if args.target == "build":
-        build(config.MAIN_SOURCE, config.EXE_FILE)
+        build()
 
     elif args.target == "clean":
+        exe_full_path = Path(config.EXE_DIR).joinpath(config.EXE_FILE)
         if os.path.exists(config.OBJECT_DIR):
             colour_print("Removing " + config.OBJECT_DIR + "...", colour=colours.MGT)
             shutil.rmtree(config.OBJECT_DIR)
         if os.path.exists(config.EXE_FILE):
-            colour_print("Removing " + config.EXE_FILE + "...",   colour=colours.MGT)
-            os.remove(config.EXE_FILE)
+            colour_print(f"Removing {exe_full_path}...",   colour=colours.MGT)
+            os.remove(exe_full_path)
     
     print("")

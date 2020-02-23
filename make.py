@@ -241,7 +241,7 @@ def test_source(source:Path) -> bool:
         object_mtime = objectfile.stat().st_mtime
         if object_mtime < source_mtime:
             # Source is newer than object file, compile
-            build_required = Truebuild/TreePrinter.o
+            build_required = True
         else:
             # Check if any dependencies are newer than object file
             for dep in dependencies(source):

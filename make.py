@@ -279,13 +279,11 @@ def build_object(source_file:Path) -> int:
 
     return ret.returncode == 0
 
-
-if __name__ == "__main__":
-
+def main(args):
     argparser = argparse.ArgumentParser()
     argparser.add_argument("target", choices=['build', 'clean'])
     argparser.add_argument("--config", required=False, type=str)
-    args = argparser.parse_args()
+    args = argparser.parse_args(args=args)
 
     if args.config:
         if not os.path.exists(args.config):
@@ -352,3 +350,7 @@ if __name__ == "__main__":
             os.remove(exe_full_path)
 
     print("")
+
+
+if __name__ == "__main__":
+    main(sys.argv)

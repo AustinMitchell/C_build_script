@@ -310,6 +310,8 @@ if __name__ == "__main__":
     colour_print("    EXE file:         ", colour=colours.YLW, style=styles.BLD, end='')
     colour_print(config.EXE_FILE, colour=colours.YLW)
 
+    colour_print("    Source main file: ", colour=colours.GRN, style=styles.BLD, end='')
+    colour_print(config.SOURCE_MAIN, colour=colours.GRN)
     colour_print("    Source directory: ", colour=colours.GRN, style=styles.BLD, end='')
     colour_print(config.SOURCE_DIR, colour=colours.GRN)
     colour_print("    Source extension: ", colour=colours.GRN, style=styles.BLD, end='')

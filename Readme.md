@@ -4,7 +4,7 @@ A Script to make simple C/C++ executable projects. requires Python 3.
 
 The script has some expectations:
 - All dependencies of executable can be discovered through the -MM options of your compiler
-- All source files intended to be included in the executable have a header file of the same base name, and their headers will be discovered in the dependency list of your main source file
+- All source files intended to be included in the executable have a header file of the same base name and same directory structure, and their headers will be discovered in the dependency list of your main source file
 
 If your project satisfied these two requirements, this script should work.
 

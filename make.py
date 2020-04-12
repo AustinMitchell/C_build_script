@@ -51,26 +51,24 @@ class config:
     MAIN_OBJECT: str
 
     @classmethod
-    def construct(cls, input):
-        config_file = yaml.safe_load(input.read())
-        print(config_file)
+    def construct(cls, configuration: Dict[str, str]):
 
-        config.COMPILER = config_file["COMPILER"]
-        config.FLAGS = config_file["FLAGS"]
+        config.COMPILER = configuration["COMPILER"]
+        config.FLAGS = configuration["FLAGS"]
 
-        config.EXE_DIR  = config_file["EXE_DIR"]
-        config.EXE_FILE = config_file["EXE_FILE"]
+        config.EXE_DIR  = configuration["EXE_DIR"]
+        config.EXE_FILE = configuration["EXE_FILE"]
 
-        config.SOURCE_MAIN = config_file["SOURCE_MAIN"]
+        config.SOURCE_MAIN = configuration["SOURCE_MAIN"]
 
-        config.SOURCE_DIR = config_file["SOURCE_DIR"]
-        config.SOURCE_EXT = config_file["SOURCE_EXT"]
-        config.HEADER_DIR = config_file["HEADER_DIR"]
-        config.HEADER_EXT = config_file["HEADER_EXT"]
-        config.OBJECT_DIR = config_file["OBJECT_DIR"]
-        config.OBJECT_EXT = config_file["OBJECT_EXT"]
+        config.SOURCE_DIR = configuration["SOURCE_DIR"]
+        config.SOURCE_EXT = configuration["SOURCE_EXT"]
+        config.HEADER_DIR = configuration["HEADER_DIR"]
+        config.HEADER_EXT = configuration["HEADER_EXT"]
+        config.OBJECT_DIR = configuration["OBJECT_DIR"]
+        config.OBJECT_EXT = configuration["OBJECT_EXT"]
 
-        config.OTHER_INCLUDES = config_file["OTHER_INCLUDES"]
+        config.OTHER_INCLUDES = configuration["OTHER_INCLUDES"]
 
 
 class Colour:
@@ -279,27 +277,9 @@ def build_object(source_file:Path) -> int:
 
     return ret.returncode == 0
 
-def main(args):
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument("target", choices=['build', 'clean'])
-    argparser.add_argument("--config", required=False, type=str)
-    args = argparser.parse_args(args=args)
 
-    if args.config:
-        if not os.path.exists(args.config):
-            colour_print(f"File '{args.config}' does not exist. Aborting.", colour=colours.RED, style=styles.BLD, end='')
-            sys.exit(1)
-
-        colour_print("Constructing configuration from file ", end='')
-        colour_print(args.config, style=styles.BLD)
-        with open(args.config) as f:
-            config.construct(f)
-    else:
-        colour_print("Constructing configuration from DEFAULT_CONFIG")
-        with io.StringIO() as f:
-            f.write(DEFAULT_CONFIG)
-            f.seek(0)
-            config.construct(f)
+def execute(action:str):
+    """ main """
 
     print("")
     colour_print("Configuration", style=styles.ALL)
@@ -335,12 +315,12 @@ def main(args):
 
     colour_print("")
     colour_print("Running target ", colour=colours.WHT, end='')
-    colour_print(args.target, colour=colours.WHT, style=styles.BLD)
+    colour_print(action, colour=colours.WHT, style=styles.BLD)
 
-    if args.target == "build":
+    if action == "build":
         build()
 
-    elif args.target == "clean":
+    elif action == "clean":
         exe_full_path = Path(config.EXE_DIR).joinpath(config.EXE_FILE)
         if os.path.exists(config.OBJECT_DIR):
             colour_print("Removing " + config.OBJECT_DIR + "...", colour=colours.MGT)
@@ -352,5 +332,45 @@ def main(args):
     print("")
 
 
+def parse_config(file):
+    """ Sets up config based on yaml config file, and executes build with given action """
+
+    config_file = yaml.safe_load(file.read())
+    config.construct(config_file)
+
+
+def parse_dict(configuration:Dict[str, str]):
+    """ Sets up config based on configuration dict, and executes build with given action """
+
+    colour_print("Constructing configuration from dictionary")
+    colour_print(str(configuration), style=styles.BLD)
+    config.construct(configuration)
+
+
+def main():
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("target", choices=['build', 'clean'])
+    argparser.add_argument("--config", required=False, type=str)
+    args = argparser.parse_args(args=sys.argv)
+
+    if args.config:
+        if not os.path.exists(args.config):
+            colour_print(f"File '{args.config}' does not exist. Aborting.", colour=colours.RED, style=styles.BLD, end='')
+            sys.exit(1)
+
+        colour_print("Constructing configuration from file ", end='')
+        colour_print(args.config, style=styles.BLD)
+        with open(args.config) as f:
+            parse_config(f)
+    else:
+        colour_print("Constructing configuration from DEFAULT_CONFIG")
+        with io.StringIO() as f:
+            f.write(DEFAULT_CONFIG)
+            f.seek(0)
+            parse_config(f)
+
+    execute(args.target)
+
+
 if __name__ == "__main__":
-    main(sys.argv)
+    main()

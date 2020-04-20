@@ -285,9 +285,10 @@ def build():
 
                 if config.RESOURCES:
                     colour_print("")
-                    colour_print("Updating resource files ", colour=colours.WHT)
+                    colour_print("Updating resource files ", colour=colours.WHT, style=styles.BLD)
                     for path in config.RESOURCES:
-                        colour_print(f"Checking {path}...", colour=colours.WHT, style=styles.BLD)
+                        colour_print(f"Checking {path['in']}...", colour=colours.WHT)
+                        copy_if_outdated(Path(path['in']), Path(config.EXE_DIR).joinpath(Path(path['out'])))
 
         else:
             # Skips building if nothing was updated.

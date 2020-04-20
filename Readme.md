@@ -82,7 +82,7 @@ def main():
 
             "OTHER_INCLUDES": "-I./lib/"
 
-            "RESOURCES": {"in":"./res/", "out":"res"}
+            "RESOURCES": [{"in":"./res/", "out":"res"}]
         }
 
         # Sets the config for the make script

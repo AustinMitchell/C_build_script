@@ -188,7 +188,7 @@ def generate_dependencies(file: Path) -> Generator[Path, None, None]:
     """
 
     # This will create a string of all the non-system dependencies for our source file separated by spaces
-    cmd = f"{config.COMPILER} {config.FLAGS} -MM -I{config.HEADER_DIR} {file}"
+    cmd = f"{config.COMPILER} {config.OTHER_INCLUDES} -MM -I{config.HEADER_DIR} {file}"
     deps = re.findall(r"\S+\.hpp", str(shell(cmd, stdout=PIPE).stdout.read()))
 
     return (Path(dep) for dep in deps)

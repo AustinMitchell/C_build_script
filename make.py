@@ -26,6 +26,10 @@ OBJECT_DIR: "./build/"
 OBJECT_EXT: "o"
 
 OTHER_INCLUDES: "-I./lib/"
+
+RESOURCES:
+    - in:  ./res/
+      out: res
 """
 
 class config:
@@ -46,12 +50,15 @@ class config:
 
     OTHER_INCLUDES: str
 
+
     MAIN_SOURCE: str
     MAIN_HEADER: str
     MAIN_OBJECT: str
 
+    RESOURCES: List[Dict[str, str]]
+
     @classmethod
-    def construct(cls, configuration: Dict[str, str]):
+    def construct(cls, configuration: Dict[str, Any]):
 
         config.COMPILER = configuration["COMPILER"]
         config.FLAGS = configuration["FLAGS"]
@@ -69,6 +76,8 @@ class config:
         config.OBJECT_EXT = configuration["OBJECT_EXT"]
 
         config.OTHER_INCLUDES = configuration["OTHER_INCLUDES"]
+
+        config.RESOURCES  = configuration["RESOURCES"]
 
 
 class Colour:
@@ -112,6 +121,30 @@ def colour_print(message: str,
     resetColor = styles.END.val if reset else ''
     print(f"{colour.val}{style.val}{message}{resetColor}", **kwargs)
 
+
+def copy_if_outdated(source:Path, dest:Path, depth:int=0) -> None:
+    """
+    Compares all files in source directory and checks if they are newer than the same files in the destination. If they are, they
+    are copied to the destination.
+    """
+
+    if not source.exists():
+        return
+
+    if not dest.exists():
+        if source.is_dir():
+            colour_print(f"    Copying folder {str(source)} to {str(dest)}...", colour=colours.YLW)
+            shutil.copytree(str(source), str(dest))
+        else:
+            colour_print(f"    Copying file {str(source)} to {str(dest)}...", colour=colours.YLW)
+            shutil.copy2(str(source), str(dest))
+    else:
+        if source.is_file() and source.stat().st_mtime > dest.stat().st_mtime:
+            colour_print(f"    Copying file {str(source)} to {str(dest)}...", colour=colours.YLW)
+            shutil.copy2(str(source), str(dest))
+        else:
+            for f in source.glob("*"):
+                copy_if_outdated(f, dest.joinpath(f.name), depth+1)
 
 
 def shell(cmd: str, stdout=None) -> Popen:
@@ -233,7 +266,7 @@ def build():
             # Build exe location folders
             Path(Path(config.EXE_DIR)).mkdir(parents=True, exist_ok=True)
 
-            cmd = (f"{config.COMPILER} {config.FLAGS} -o {exe_full_path} {' '.join((str(source_to_object(s)) for (s,b) in source_files()))}")
+            cmd = (f"{config.COMPILER} {config.FLAGS} {config.OTHER_INCLUDES} -o {exe_full_path} {' '.join((str(source_to_object(s)) for (s,b) in source_files()))}")
 
             colour_print("Generating executable... ", colour=colours.CYN, style=styles.BLD)
             colour_print("Running: ", colour=colours.CYN, style=styles.BLD, end='')
@@ -249,6 +282,12 @@ def build():
             else:
                 colour_print("Compilation succeeded", colour=colours.BLU, style=styles.BLD)
                 colour_print("---------------------", colour=colours.BLU)
+
+                if config.RESOURCES:
+                    colour_print("")
+                    colour_print("Updating resource files ", colour=colours.WHT)
+                    for path in config.RESOURCES:
+                        colour_print(f"Checking {path}...", colour=colours.WHT, style=styles.BLD)
 
         else:
             # Skips building if nothing was updated.
@@ -312,6 +351,10 @@ def execute(action:str):
     colour_print(config.COMPILER, colour=colours.RED)
     colour_print("    Compiler flags:   ", colour=colours.RED, style=styles.BLD, end='')
     colour_print(config.FLAGS, colour=colours.RED)
+
+    colour_print("    Resources:        ", colour=colours.YLW, style=styles.BLD)
+    for s in (f"        {r['in']} -> {Path(config.EXE_DIR).joinpath(r['out'])}" for r in config.RESOURCES):
+        colour_print(s,  colour=colours.YLW)
 
     colour_print("")
     colour_print("Running target ", colour=colours.WHT, end='')

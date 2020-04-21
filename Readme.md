@@ -18,7 +18,8 @@ It takes one positional argument for the action to take, and one flag argument f
 
 ```yml
 "COMPILER": "clang++"
-"FLAGS": "-std=c++17 -Wall -Wextra"
+"COMPILER_FLAGS": "-std=c++17 -Wall -Wextra"
+"LINKER_FLAGS": "-lpthread"
 
 "EXE_DIR": "./bin"
 "EXE_FILE": "a.out"
@@ -42,7 +43,8 @@ It takes one positional argument for the action to take, and one flag argument f
 | Flag              | Description |
 | ----              | :- |
 | COMPILER          | Compiler executable name |
-| FLAGS             | Extra flags to pass to compiler |
+| COMPILER_FLAGS    | Extra flags to pass to compiler |
+| LINKER_FLAGS      | Flags to pass to the linker |
 | EXE_DIR           | Directory to place exectuable |
 | EXE_FILE          | Name of exectuable within directoy |
 | SOURCE_MAIN       | Name of source containing main function within directory |
@@ -67,7 +69,8 @@ import C_build_script.make as make
 def main():
         config = {
             "COMPILER": "clang++"
-            "FLAGS": "-std=c++17 -Wall -Wextra"
+            "COMPILER_FLAGS": "-std=c++17 -Wall -Wextra"
+            "LINKER_FLAGS": "-lpthread"
 
             "EXE_DIR": "./bin"
             "EXE_FILE": "a.out"

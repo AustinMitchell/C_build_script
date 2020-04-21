@@ -12,7 +12,8 @@ import re
 
 DEFAULT_CONFIG = """\
 COMPILER: "clang++"
-FLAGS: "-std=c++17 -Wall -Wextra"
+COMPILER_FLAGS: "-std=c++17 -Wall -Wextra"
+LINKER_FLAGS: "-lpthread"
 
 EXE_DIR: "./bin"
 EXE_FILE: "a.out"
@@ -34,7 +35,8 @@ RESOURCES:
 
 class config:
     COMPILER:str
-    FLAGS:str
+    COMPILER_FLAGS:str
+    LINKER_FLAGS:str
 
     EXE_DIR: str
     EXE_FILE: str
@@ -61,7 +63,8 @@ class config:
     def construct(cls, configuration: Dict[str, Any]):
 
         config.COMPILER = configuration["COMPILER"]
-        config.FLAGS = configuration["FLAGS"]
+        config.COMPILER_FLAGS = configuration["COMPILER_FLAGS"]
+        config.LINKER_FLAGS = configuration["LINKER_FLAGS"]
 
         config.EXE_DIR  = configuration["EXE_DIR"]
         config.EXE_FILE = configuration["EXE_FILE"]
@@ -266,7 +269,7 @@ def build():
             # Build exe location folders
             Path(Path(config.EXE_DIR)).mkdir(parents=True, exist_ok=True)
 
-            cmd = (f"{config.COMPILER} {config.FLAGS} {config.OTHER_INCLUDES} -o {exe_full_path} {' '.join((str(source_to_object(s)) for (s,b) in source_files()))}")
+            cmd = (f"{config.COMPILER} {config.OTHER_INCLUDES} {config.LINKER_FLAGS} -o {exe_full_path} {' '.join((str(source_to_object(s)) for (s,b) in source_files()))}")
 
             colour_print("Generating executable... ", colour=colours.CYN, style=styles.BLD)
             colour_print("Running: ", colour=colours.CYN, style=styles.BLD, end='')
@@ -308,7 +311,7 @@ def build_object(source_file:Path) -> int:
     # If object file dir is missing, make it
     Path(Path(object_file).parent).mkdir(parents=True, exist_ok=True)
 
-    cmd = f"{config.COMPILER} {config.FLAGS} -c -I{config.HEADER_DIR} {config.OTHER_INCLUDES} {source_file} -o {object_file}"
+    cmd = f"{config.COMPILER} {config.COMPILER_FLAGS} -c -I{config.HEADER_DIR} {config.OTHER_INCLUDES} {source_file} -o {object_file}"
     colour_print("Running: ", style=styles.BLD, end='')
     colour_print(cmd)
 
@@ -319,7 +322,7 @@ def build_object(source_file:Path) -> int:
 
 
 def execute(action:str):
-    """ main """
+    """ Executes build based on configuration """
 
     print("")
     colour_print("Configuration", style=styles.ALL)
@@ -351,7 +354,9 @@ def execute(action:str):
     colour_print("    Compiler:         ", colour=colours.RED, style=styles.BLD, end='')
     colour_print(config.COMPILER, colour=colours.RED)
     colour_print("    Compiler flags:   ", colour=colours.RED, style=styles.BLD, end='')
-    colour_print(config.FLAGS, colour=colours.RED)
+    colour_print(config.COMPILER_FLAGS, colour=colours.RED)
+    colour_print("    Linker flags:     ", colour=colours.RED, style=styles.BLD, end='')
+    colour_print(config.LINKER_FLAGS, colour=colours.RED)
 
     colour_print("    Resources:        ", colour=colours.YLW, style=styles.BLD)
     for s in (f"        {r['in']} -> {Path(config.EXE_DIR).joinpath(r['out'])}" for r in config.RESOURCES):

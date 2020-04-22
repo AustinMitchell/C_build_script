@@ -10,6 +10,8 @@ import argparse
 import re
 
 
+
+
 DEFAULT_CONFIG = """\
 COMPILER: "clang++"
 COMPILER_FLAGS: "-std=c++17 -Wall -Wextra"
@@ -32,6 +34,9 @@ RESOURCES:
     - in:  ./res/
       out: res
 """
+
+
+
 
 class config:
     COMPILER:str
@@ -83,6 +88,8 @@ class config:
         config.RESOURCES  = configuration["RESOURCES"]
 
 
+
+
 class Colour:
     def __init__(self, val):
         self.val = val
@@ -91,6 +98,8 @@ class Colour:
 class Style:
     def __init__(self, val):
         self.val = val
+
+
 
 
 class colours:
@@ -105,12 +114,16 @@ class colours:
     WHT = Colour('\033[97m')  # White
 
 
+
+
 class styles:
     NIL = Style('')         # No change
     END = Style('\033[0m')  # Remove all changes (including color)
     BLD = Style('\033[1m')  # Bold
     ULN = Style('\033[4m')  # Underlined
     ALL = Style('\033[1m\033[4m')  # Bold+underlined
+
+
 
 
 def colour_print(message: str,
@@ -123,6 +136,8 @@ def colour_print(message: str,
     """
     resetColor = styles.END.val if reset else ''
     print(f"{colour.val}{style.val}{message}{resetColor}", **kwargs)
+
+
 
 
 def copy_if_outdated(source:Path, dest:Path, depth:int=0) -> None:
@@ -150,12 +165,16 @@ def copy_if_outdated(source:Path, dest:Path, depth:int=0) -> None:
                 copy_if_outdated(f, dest.joinpath(f.name), depth+1)
 
 
+
+
 def shell(cmd: str, stdout=None) -> Popen:
     """
     Executes a command on the shell using Popen and returns the object created
     """
 
     return Popen(cmd, shell=True, stdin=PIPE, stdout=stdout, stderr=None)
+
+
 
 
 def test_source(source:Path, dependencies:List[Path]) -> bool:
@@ -187,6 +206,9 @@ def test_source(source:Path, dependencies:List[Path]) -> bool:
 
     return build_required
 
+
+
+
 def source_files() -> List[Tuple[Path, bool]]:
     """
     Creates a generator of all files in the project with the source extension set in the config, and detemines if they need building
@@ -212,11 +234,17 @@ def source_files() -> List[Tuple[Path, bool]]:
     return sources
 
 
+
+
 def header_to_source(header:Path) -> Path:
     return Path(config.SOURCE_DIR).joinpath(Path(header).relative_to(config.HEADER_DIR).parent, f"{Path(header).stem}.{config.SOURCE_EXT}")
 
+
 def source_to_object(source:Path) -> Path:
     return Path(config.OBJECT_DIR).joinpath(Path(source).relative_to(config.SOURCE_DIR).parent, f"{Path(source).stem}.{config.OBJECT_EXT}")
+
+
+
 
 def generate_dependencies(file: Path) -> Generator[Path, None, None]:
     """
@@ -228,6 +256,8 @@ def generate_dependencies(file: Path) -> Generator[Path, None, None]:
     deps = re.findall(r"\S+\.hpp", str(shell(cmd, stdout=PIPE).stdout.read()))
 
     return (Path(dep) for dep in deps)
+
+
 
 
 def build():
@@ -307,6 +337,8 @@ def build():
                         copy_if_outdated(Path(path['in']), Path(config.EXE_DIR).joinpath(Path(path['out'])))
 
 
+
+
 def build_object(source_file:Path) -> int:
     """
     Compiles the given source file and directs it to the given object file location.
@@ -326,6 +358,8 @@ def build_object(source_file:Path) -> int:
     ret.wait()
 
     return ret.returncode == 0
+
+
 
 
 def execute(action:str):
@@ -388,6 +422,8 @@ def execute(action:str):
     print("")
 
 
+
+
 def parse_config(file):
     """ Sets up config based on yaml config file, and executes build with given action """
 
@@ -401,6 +437,8 @@ def parse_dict(configuration:Dict[str, str]):
     colour_print("Constructing configuration from dictionary")
     colour_print(str(configuration), style=styles.BLD)
     config.construct(configuration)
+
+
 
 
 def main():

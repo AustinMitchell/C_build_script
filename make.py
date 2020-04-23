@@ -79,13 +79,13 @@ class config:
         config.LINKER_FLAGS   = get_default("LINKER_FLAGS", "")
 
         config.SOURCE_DIR = get_default("SOURCE_DIR", "src/")
-        config.SOURCE_EXT = get_default("SOURCE_EXT", ".cpp")
+        config.SOURCE_EXT = get_default("SOURCE_EXT", "cpp")
 
         config.HEADER_DIR = get_default("HEADER_DIR", "include/")
-        config.HEADER_EXT = get_default("HEADER_EXT", ".hpp")
+        config.HEADER_EXT = get_default("HEADER_EXT", "hpp")
 
         config.OBJECT_DIR = get_default("OBJECT_DIR", "build/")
-        config.OBJECT_EXT = get_default("OBJECT_EXT", ".o")
+        config.OBJECT_EXT = get_default("OBJECT_EXT", "o")
 
         config.EXE_DIR  = get_default("EXE_DIR", "bin/")
         config.EXE_FILE = get_default("EXE_FILE", "a.out")
@@ -95,7 +95,7 @@ class config:
         config.RESOURCES  = get_default("RESOURCES", [])
 
         if "DEPEND_MAPPING" in configuration:
-            config.DEPEND_MAPPING = {Path(header):[Path(source) for source in source_list] for header, source_list in configuration["DEPEND_MAPPING"]}
+            config.DEPEND_MAPPING = {Path(header):[Path(source) for source in source_list] for header, source_list in configuration["DEPEND_MAPPING"].items()}
         else:
             config.DEPEND_MAPPING = {}
 

@@ -11,33 +11,6 @@ import re
 
 
 
-
-DEFAULT_CONFIG = """\
-COMPILER: "clang++"
-COMPILER_FLAGS: "-std=c++17 -Wall -Wextra"
-LINKER_FLAGS: "-lpthread"
-
-EXE_DIR: "./bin"
-EXE_FILE: "a.out"
-
-SOURCE_MAIN: "main.cc"
-SOURCE_DIR: "./src/"
-SOURCE_EXT: "cc"
-HEADER_DIR: "./include/"
-HEADER_EXT: "h"
-OBJECT_DIR: "./build/"
-OBJECT_EXT: "o"
-
-OTHER_INCLUDES: "-I./lib/"
-
-RESOURCES:
-    - in:  ./res/
-      out: res
-"""
-
-
-
-
 class config:
     COMPILER:str
     COMPILER_FLAGS:str
@@ -61,7 +34,7 @@ class config:
     MAIN_HEADER: str
     MAIN_OBJECT: str
 
-    RESOURCES: List[Dict[str, str]]
+    RESOURCES: Dict[Path, Path]
 
     DEPEND_MAPPING: Dict[Path, List[Path]]
 
@@ -92,7 +65,10 @@ class config:
 
         config.OTHER_INCLUDES = get_default("OTHER_INCLDES", "")
 
-        config.RESOURCES  = get_default("RESOURCES", [])
+        if "RESOURCES" in configuration:
+            config.RESOURCES = {Path(in_file):Path(out_file) for in_file, out_file in configuration["RESOURCES"].items()}
+        else:
+            config.RESOURCES = {}
 
         if "DEPEND_MAPPING" in configuration:
             config.DEPEND_MAPPING = {Path(header):[Path(source) for source in source_list] for header, source_list in configuration["DEPEND_MAPPING"].items()}
@@ -340,9 +316,9 @@ def build():
                 if config.RESOURCES:
                     colour_print("")
                     colour_print("Updating resource files ", colour=colours.WHT, style=styles.BLD)
-                    for path in config.RESOURCES:
-                        colour_print(f"Checking {path['in']}...", colour=colours.WHT)
-                        copy_if_outdated(Path(path['in']), Path(config.EXE_DIR).joinpath(Path(path['out'])))
+                    for in_file, out_file in config.RESOURCES.items():
+                        colour_print(f"Checking {in_file}...", colour=colours.WHT)
+                        copy_if_outdated(in_file, Path(config.EXE_DIR).joinpath(out_file))
 
         else:
             # Skips building if nothing was updated.
@@ -351,11 +327,11 @@ def build():
             colour_print("------------------------------", colour=colours.GRN)
 
             if config.RESOURCES:
-                    colour_print("")
-                    colour_print("Updating resource files ", colour=colours.WHT, style=styles.BLD)
-                    for path in config.RESOURCES:
-                        colour_print(f"Checking {path['in']}...", colour=colours.WHT)
-                        copy_if_outdated(Path(path['in']), Path(config.EXE_DIR).joinpath(Path(path['out'])))
+                colour_print("")
+                colour_print("Updating resource files ", colour=colours.WHT, style=styles.BLD)
+                for in_file, out_file in config.RESOURCES.items():
+                    colour_print(f"Checking {in_file}...", colour=colours.WHT)
+                    copy_if_outdated(in_file, Path(config.EXE_DIR).joinpath(out_file))
 
 
 
@@ -413,6 +389,16 @@ def execute(action:str):
     colour_print("    Other includes:   ", colour=colours.MGT, style=styles.BLD, end='')
     colour_print(config.OTHER_INCLUDES, colour=colours.MGT)
 
+    colour_print("    Header mappings:  ", colour=colours.MGT, style=styles.BLD)
+    for header, source_list in config.DEPEND_MAPPING.items():
+        colour_print(f"        {header} -> ", colour=colours.MGT, end='')
+        space_padding = len(f"        {str(header)} -> ")
+        for i, source in enumerate(source_list):
+            if i==0:
+                colour_print(f"{str(source)}", colour=colours.MGT)
+            else:
+                colour_print(f"{' '*space_padding}{str(source)}", colour=colours.MGT)
+
     colour_print("    Compiler:         ", colour=colours.RED, style=styles.BLD, end='')
     colour_print(config.COMPILER, colour=colours.RED)
     colour_print("    Compiler flags:   ", colour=colours.RED, style=styles.BLD, end='')
@@ -421,7 +407,7 @@ def execute(action:str):
     colour_print(config.LINKER_FLAGS, colour=colours.RED)
 
     colour_print("    Resources:        ", colour=colours.YLW, style=styles.BLD)
-    for s in (f"        {r['in']} -> {Path(config.EXE_DIR).joinpath(r['out'])}" for r in config.RESOURCES):
+    for s in (f"        {in_file} -> {Path(config.EXE_DIR).joinpath(out_file)}" for in_file, out_file in config.RESOURCES):
         colour_print(s,  colour=colours.YLW)
 
     colour_print("")

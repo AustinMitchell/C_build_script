@@ -57,36 +57,47 @@ class config:
 
     OTHER_INCLUDES: str
 
-
     MAIN_SOURCE: str
     MAIN_HEADER: str
     MAIN_OBJECT: str
 
     RESOURCES: List[Dict[str, str]]
 
+    DEPEND_MAPPING: Dict[Path, List[Path]]
+
     @classmethod
     def construct(cls, configuration: Dict[str, Any]):
+        def get_default(arg:str, default):
+            return configuration[arg] if arg in configuration else default
 
-        config.COMPILER = configuration["COMPILER"]
-        config.COMPILER_FLAGS = configuration["COMPILER_FLAGS"]
-        config.LINKER_FLAGS = configuration["LINKER_FLAGS"]
-
-        config.EXE_DIR  = configuration["EXE_DIR"]
-        config.EXE_FILE = configuration["EXE_FILE"]
-
+        # required args
+        config.COMPILER    = configuration["COMPILER"]
         config.SOURCE_MAIN = configuration["SOURCE_MAIN"]
 
-        config.SOURCE_DIR = configuration["SOURCE_DIR"]
-        config.SOURCE_EXT = configuration["SOURCE_EXT"]
-        config.HEADER_DIR = configuration["HEADER_DIR"]
-        config.HEADER_EXT = configuration["HEADER_EXT"]
-        config.OBJECT_DIR = configuration["OBJECT_DIR"]
-        config.OBJECT_EXT = configuration["OBJECT_EXT"]
+        # non-required args
+        config.COMPILER_FLAGS = get_default("COMPILER_FLAGS", "")
+        config.LINKER_FLAGS   = get_default("LINKER_FLAGS", "")
 
-        config.OTHER_INCLUDES = configuration["OTHER_INCLUDES"]
+        config.SOURCE_DIR = get_default("SOURCE_DIR", "src/")
+        config.SOURCE_EXT = get_default("SOURCE_EXT", ".cpp")
 
-        config.RESOURCES  = configuration["RESOURCES"]
+        config.HEADER_DIR = get_default("HEADER_DIR", "include/")
+        config.HEADER_EXT = get_default("HEADER_EXT", ".hpp")
 
+        config.OBJECT_DIR = get_default("OBJECT_DIR", "build/")
+        config.OBJECT_EXT = get_default("OBJECT_EXT", ".o")
+
+        config.EXE_DIR  = get_default("EXE_DIR", "bin/")
+        config.EXE_FILE = get_default("EXE_FILE", "a.out")
+
+        config.OTHER_INCLUDES = get_default("OTHER_INCLDES", "")
+
+        config.RESOURCES  = get_default("RESOURCES", [])
+
+        if "DEPEND_MAPPING" in configuration:
+            config.DEPEND_MAPPING = {Path(header):[Path(source) for source in source_list] for header, source_list in configuration["DEPEND_MAPPING"]}
+        else:
+            config.DEPEND_MAPPING = {}
 
 
 
@@ -224,12 +235,22 @@ def source_files() -> List[Tuple[Path, bool]]:
             continue
 
         checked_deps.add(current_dep)
-        current_source = header_to_source(current_dep)
 
-        if os.path.exists(current_source):
-            new_deps = generate_dependencies(current_source)
-            sources.append((current_source, test_source(current_source, list(new_deps))))
-            deps.extend(new_deps)
+        # If this header has specified source files, use the mapping
+        if current_dep in config.DEPEND_MAPPING:
+            for current_source in config.DEPEND_MAPPING[current_dep]:
+                if os.path.exists(current_source):
+                    new_deps = generate_dependencies(current_source)
+                    sources.append((current_source, test_source(current_source, list(new_deps))))
+                    deps.extend(new_deps)
+        else:
+            # Otherwise assume there is a file with the same name and path as the header
+            current_source = header_to_source(current_dep)
+
+            if os.path.exists(current_source):
+                new_deps = generate_dependencies(current_source)
+                sources.append((current_source, test_source(current_source, list(new_deps))))
+                deps.extend(new_deps)
 
     return sources
 
@@ -444,24 +465,17 @@ def parse_dict(configuration:Dict[str, str]):
 def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("target", choices=['build', 'clean'])
-    argparser.add_argument("--config", required=False, type=str)
+    argparser.add_argument("--config", required=True, type=str)
     args = argparser.parse_args(args=sys.argv)
 
-    if args.config:
-        if not os.path.exists(args.config):
-            colour_print(f"File '{args.config}' does not exist. Aborting.", colour=colours.RED, style=styles.BLD, end='')
-            sys.exit(1)
+    if not os.path.exists(args.config):
+        colour_print(f"File '{args.config}' does not exist. Aborting.", colour=colours.RED, style=styles.BLD, end='')
+        sys.exit(1)
 
-        colour_print("Constructing configuration from file ", end='')
-        colour_print(args.config, style=styles.BLD)
-        with open(args.config) as f:
-            parse_config(f)
-    else:
-        colour_print("Constructing configuration from DEFAULT_CONFIG")
-        with io.StringIO() as f:
-            f.write(DEFAULT_CONFIG)
-            f.seek(0)
-            parse_config(f)
+    colour_print("Constructing configuration from file ", end='')
+    colour_print(args.config, style=styles.BLD)
+    with open(args.config) as f:
+        parse_config(f)
 
     execute(args.target)
 

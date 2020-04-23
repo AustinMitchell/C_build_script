@@ -266,10 +266,10 @@ def build():
     object_building_success = True
     linking_required = False
 
-    print("")
-    print(f"Sources: {' '.join(str(s) for s in source_files())}")
-    print(f"Objects: {' '.join(str(source_to_object(s)) for (s,b) in source_files())}")
-    print("")
+    # print("")
+    # print(f"Sources: {' '.join(str(s) for s in source_files())}")
+    # print(f"Objects: {' '.join(str(source_to_object(s)) for (s,b) in source_files())}")
+    # print("")
 
     for (source, needs_building) in source_files():
         if needs_building:
@@ -434,6 +434,8 @@ def execute(action:str):
 def parse_config(file):
     """ Sets up config based on yaml config file, and executes build with given action """
 
+    colour_print("Constructing configuration from file ", end='')
+    # colour_print(args.config, style=styles.BLD)
     config_file = yaml.safe_load(file.read())
     config.construct(config_file)
 
@@ -442,7 +444,7 @@ def parse_dict(configuration:Dict[str, str]):
     """ Sets up config based on configuration dict, and executes build with given action """
 
     colour_print("Constructing configuration from dictionary")
-    colour_print(str(configuration), style=styles.BLD)
+    # colour_print(str(configuration), style=styles.BLD)
     config.construct(configuration)
 
 
@@ -458,8 +460,6 @@ def main():
         colour_print(f"File '{args.config}' does not exist. Aborting.", colour=colours.RED, style=styles.BLD, end='')
         sys.exit(1)
 
-    colour_print("Constructing configuration from file ", end='')
-    colour_print(args.config, style=styles.BLD)
     with open(args.config) as f:
         parse_config(f)
 

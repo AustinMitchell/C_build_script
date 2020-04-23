@@ -407,7 +407,7 @@ def execute(action:str):
     colour_print(config.LINKER_FLAGS, colour=colours.RED)
 
     colour_print("    Resources:        ", colour=colours.YLW, style=styles.BLD)
-    for s in (f"        {in_file} -> {Path(config.EXE_DIR).joinpath(out_file)}" for in_file, out_file in config.RESOURCES):
+    for s in (f"        {in_file} -> {Path(config.EXE_DIR).joinpath(out_file)}" for in_file, out_file in config.RESOURCES.items()):
         colour_print(s,  colour=colours.YLW)
 
     colour_print("")

@@ -11,9 +11,9 @@ If your project satisfied these requirements, this script should work.
 
 The script has the following usage:
 ```
-usage: make.py [-h] [--config CONFIG] {build,clean}
+usage: make.py [-h] --target {build,clean} --config CONFIG
 ```
-It takes one positional argument for the action to take, and one flag argument for the config file which will control how `make.py` builds your program. The config file is a YAML file.
+It takes one flag argument for the action to take, and one flag argument for the config file which will control how `make.py` builds your program. The config file is a YAML file.
 
 ### Config Example
 
@@ -35,9 +35,11 @@ OBJECT_EXT: "o"
 
 OTHER_INCLUDES: "-I./lib/"
 
+# All files in res/images/ will be places in /bin/images/
 RESOURCES:
     ./res/images: images
 
+# part1 and part2 contribute to defining functions laid out in helper.hpp, thus form a dependency tree
 DEPEND_MAPPING:
     helper.hpp:
         - helper-part1.cpp
@@ -91,7 +93,14 @@ def main():
 
             "OTHER_INCLUDES": "-I./lib/"
 
-            "RESOURCES": [{"in":"./res/", "out":"res"}]
+            # Define all individual mappings to make
+            "RESOURCES": {"./res/images": "images"}
+
+            # List of mappings
+            "DEPEND_MAPPING": [
+                    {"helper.hpp": ["helper-part1.cpp",
+                                    "helper-part2.cpp"]}
+                ]
         }
 
         # Sets the config for the make script

@@ -1,3 +1,5 @@
+#!python3
+
 from subprocess import Popen, PIPE, STDOUT
 from typing import List, Tuple, Any, Generator, Iterator, Set, Dict
 from pathlib import Path
@@ -29,10 +31,6 @@ class config:
     OBJECT_EXT: str
 
     OTHER_INCLUDES: str
-
-    MAIN_SOURCE: str
-    MAIN_HEADER: str
-    MAIN_OBJECT: str
 
     RESOURCES: Dict[Path, Path]
 
@@ -159,7 +157,7 @@ def shell(cmd: str, stdout=None) -> Popen:
     Executes a command on the shell using Popen and returns the object created
     """
 
-    return Popen(cmd, shell=True, stdin=PIPE, stdout=stdout, stderr=None)
+    return Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT)
 
 
 
@@ -264,7 +262,8 @@ def build():
     #   Builds dependency tree. Adding (0, mainHeader) guarantees that the list follows
     # the rules specified in the function documentation
     object_building_success = True
-    linking_required = False
+    linking_required        = False
+    compiled_with_warnings  = False
 
     # print("")
     # print(f"Sources: {' '.join(str(s) for s in source_files())}")
@@ -273,8 +272,10 @@ def build():
 
     for (source, needs_building) in source_files():
         if needs_building:
-            if build_object(source):
+            (compiled, has_warnings) = build_object(source)
+            if compiled:
                 linking_required = True
+                compiled_with_warnings = compiled_with_warnings or has_warnings
             else:
                 object_building_success = False
                 break
@@ -290,7 +291,7 @@ def build():
         exe_full_path = Path(config.EXE_DIR).joinpath(config.EXE_FILE)
         if not linking_required and not os.path.exists(exe_full_path):
             linking_required = True
-            colour_print(f"The file {exe_full_path} doesn't exist.", colour=colours.MGT, style=styles.BLD)
+            #colour_print(f"The file {exe_full_path} doesn't exist.", colour=colours.MGT, style=styles.BLD)
 
         if linking_required:
             # Build exe location folders
@@ -300,18 +301,29 @@ def build():
 
             colour_print("Generating executable... ", colour=colours.CYN, style=styles.BLD)
             colour_print("Running: ", colour=colours.CYN, style=styles.BLD, end='')
-            colour_print(cmd, colour=colours.CYN)
-            print("")
+            colour_print(cmd, colour=colours.WHT)
 
             ret = shell(cmd)
             ret.wait()
+
+            msg = ret.stdout.readlines()
+
+            if (msg):
+                for line in msg:
+                    print(f"\t{line.decode(sys.stdout.encoding)}", end='')
+
+            print()
 
             if ret.returncode != 0:
                 colour_print("Compilation failed", colour=colours.RED, style=styles.BLD)
                 colour_print("------------------", colour=colours.RED)
             else:
-                colour_print("Compilation succeeded", colour=colours.BLU, style=styles.BLD)
-                colour_print("---------------------", colour=colours.BLU)
+                if compiled_with_warnings:
+                    colour_print("Compilation succeeded with warnings", colour=colours.YLW, style=styles.BLD)
+                    colour_print("---------------------", colour=colours.YLW)
+                else:
+                    colour_print("Compilation succeeded", colour=colours.BLU, style=styles.BLD)
+                    colour_print("---------------------", colour=colours.BLU)
 
                 if config.RESOURCES:
                     colour_print("")
@@ -336,7 +348,7 @@ def build():
 
 
 
-def build_object(source_file:Path) -> int:
+def build_object(source_file:Path) -> Tuple[bool, bool]:
     """
     Compiles the given source file and directs it to the given object file location.
     If the path for the object file doesn't exist, a new directory structure will be created for it.
@@ -347,14 +359,21 @@ def build_object(source_file:Path) -> int:
     # If object file dir is missing, make it
     Path(Path(object_file).parent).mkdir(parents=True, exist_ok=True)
 
-    cmd = f"{config.COMPILER} {config.COMPILER_FLAGS} -c -I{config.HEADER_DIR} {config.OTHER_INCLUDES} {source_file} -o {object_file}"
+    cmd = f"{config.COMPILER} -fdiagnostics-color=always {config.COMPILER_FLAGS} -c -I{config.HEADER_DIR} {config.OTHER_INCLUDES} {source_file} -o {object_file}"
     colour_print("Running: ", style=styles.BLD, end='')
     colour_print(cmd)
 
     ret = shell (cmd)
     ret.wait()
 
-    return ret.returncode == 0
+    msg = ret.stdout.readlines()
+
+    if (msg):
+        for line in msg:
+            print(f"\t{line.decode(sys.stdout.encoding)}", end='')
+        print()
+
+    return (ret.returncode == 0, len(msg)>0)
 
 
 
@@ -452,9 +471,9 @@ def parse_dict(configuration:Dict[str, str]):
 
 def main():
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("target", choices=['build', 'clean'])
+    argparser.add_argument("--target", required=True, choices=['build', 'clean'])
     argparser.add_argument("--config", required=True, type=str)
-    args = argparser.parse_args(args=sys.argv)
+    args = argparser.parse_args(args=sys.argv[1:])
 
     if not os.path.exists(args.config):
         colour_print(f"File '{args.config}' does not exist. Aborting.", colour=colours.RED, style=styles.BLD, end='')

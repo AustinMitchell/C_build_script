@@ -14,6 +14,10 @@ import re
 
 
 class config:
+    """
+    Contains all of the configurations required for building. Takes in an argument dict and converts the arguments to more practical forms
+    """
+
     COMPILER:str
     COMPILER_FLAGS:str
     LINKER_FLAGS:str
@@ -30,7 +34,8 @@ class config:
     OBJECT_DIR: str
     OBJECT_EXT: str
 
-    OTHER_INCLUDES: str
+    OTHER_INCLUDE_PATHS: str
+    OTHER_LIB_PATHS: str
 
     RESOURCES: Dict[Path, Path]
 
@@ -38,6 +43,10 @@ class config:
 
     @classmethod
     def construct(cls, configuration: Dict[str, Any]):
+        """
+        Sets the global configuration for this build. The README contains a descrtiption of all of the arguments.
+        """
+
         def get_default(arg:str, default):
             return configuration[arg] if arg in configuration else default
 
@@ -61,7 +70,11 @@ class config:
         config.EXE_DIR  = get_default("EXE_DIR", "bin/")
         config.EXE_FILE = get_default("EXE_FILE", "a.out")
 
-        config.OTHER_INCLUDES = get_default("OTHER_INCLDES", "")
+        config.OTHER_INCLUDE_PATHS = get_default("OTHER_INCLUDE_PATHS", [])
+        config.OTHER_INCLUDE_PATHS = " ".join(["-I"+p for p in config.OTHER_INCLUDE_PATHS])
+
+        config.OTHER_LIB_PATHS = get_default("OTHER_LIB_PATHS", [])
+        config.OTHER_LIB_PATHS = " ".join(["-L"+p for p in config.OTHER_LIB_PATHS])
 
         if "RESOURCES" in configuration:
             config.RESOURCES = {Path(in_file):Path(out_file) for in_file, out_file in configuration["RESOURCES"].items()}
@@ -76,11 +89,13 @@ class config:
 
 
 class Colour:
+    """ Wraps ANSI colour codes in an object for typechecking """
     def __init__(self, val):
         self.val = val
 
 
 class Style:
+    """ Wraps ANSI style codes in an object for typechecking """
     def __init__(self, val):
         self.val = val
 
@@ -88,6 +103,7 @@ class Style:
 
 
 class colours:
+    """ ANSI code colour constants """
     NIL = Colour('')          # No change
     BLK = Colour('\033[90m')  # Black
     RED = Colour('\033[91m')  # Red
@@ -102,6 +118,7 @@ class colours:
 
 
 class styles:
+    """ ANSI code style constants """
     NIL = Style('')         # No change
     END = Style('\033[0m')  # Remove all changes (including color)
     BLD = Style('\033[1m')  # Bold
@@ -232,10 +249,16 @@ def source_files() -> List[Tuple[Path, bool]]:
 
 
 def header_to_source(header:Path) -> Path:
+    """
+    Takes in a path to a header file and produces a path to where a corresponding source file should be
+    """
     return Path(config.SOURCE_DIR).joinpath(Path(header).relative_to(config.HEADER_DIR).parent, f"{Path(header).stem}.{config.SOURCE_EXT}")
 
 
 def source_to_object(source:Path) -> Path:
+    """
+    Takes in a path to a source file and produces a path to where a corresponding object file should be
+    """
     return Path(config.OBJECT_DIR).joinpath(Path(source).relative_to(config.SOURCE_DIR).parent, f"{Path(source).stem}.{config.OBJECT_EXT}")
 
 
@@ -247,7 +270,7 @@ def generate_dependencies(file: Path) -> Generator[Path, None, None]:
     """
 
     # This will create a string of all the non-system dependencies for our source file separated by spaces
-    cmd = f"{config.COMPILER} {config.OTHER_INCLUDES} -MM -I{config.HEADER_DIR} {file}"
+    cmd = f"{config.COMPILER} {config.OTHER_INCLUDE_PATHS} -MM -I{config.HEADER_DIR} {file}"
     deps = re.findall(r"\S+\.hpp", str(shell(cmd, stdout=PIPE).stdout.read()))
 
     return (Path(dep) for dep in deps)
@@ -256,7 +279,9 @@ def generate_dependencies(file: Path) -> Generator[Path, None, None]:
 
 
 def build():
-    """ Starts off the building process """
+    """
+    Starts off the building process
+    """
 
 
     #   Builds dependency tree. Adding (0, mainHeader) guarantees that the list follows
@@ -264,6 +289,7 @@ def build():
     object_building_success = True
     linking_required        = False
     compiled_with_warnings  = False
+    check_resources         = False
 
     # print("")
     # print(f"Sources: {' '.join(str(s) for s in source_files())}")
@@ -297,7 +323,7 @@ def build():
             # Build exe location folders
             Path(Path(config.EXE_DIR)).mkdir(parents=True, exist_ok=True)
 
-            cmd = (f"{config.COMPILER} {config.OTHER_INCLUDES} {config.LINKER_FLAGS} -o {exe_full_path} {' '.join((str(source_to_object(s)) for (s,b) in source_files()))}")
+            cmd = (f"{config.COMPILER} {config.OTHER_LIB_PATHS} {config.LINKER_FLAGS} -o {exe_full_path} {' '.join((str(source_to_object(s)) for (s,b) in source_files()))}")
 
             colour_print("Generating executable... ", colour=colours.CYN, style=styles.BLD)
             colour_print("Running: ", colour=colours.CYN, style=styles.BLD, end='')
@@ -325,12 +351,7 @@ def build():
                     colour_print("Compilation succeeded", colour=colours.BLU, style=styles.BLD)
                     colour_print("---------------------", colour=colours.BLU)
 
-                if config.RESOURCES:
-                    colour_print("")
-                    colour_print("Updating resource files ", colour=colours.WHT, style=styles.BLD)
-                    for in_file, out_file in config.RESOURCES.items():
-                        colour_print(f"Checking {in_file}...", colour=colours.WHT)
-                        copy_if_outdated(in_file, Path(config.EXE_DIR).joinpath(out_file))
+                check_resources = True
 
         else:
             # Skips building if nothing was updated.
@@ -338,12 +359,15 @@ def build():
             colour_print("Skipping executable generation", colour=colours.GRN, style=styles.BLD)
             colour_print("------------------------------", colour=colours.GRN)
 
-            if config.RESOURCES:
-                colour_print("")
-                colour_print("Updating resource files ", colour=colours.WHT, style=styles.BLD)
-                for in_file, out_file in config.RESOURCES.items():
-                    colour_print(f"Checking {in_file}...", colour=colours.WHT)
-                    copy_if_outdated(in_file, Path(config.EXE_DIR).joinpath(out_file))
+            check_resources = True
+
+    if check_resources and config.RESOURCES:
+        colour_print("")
+        colour_print("Updating resource files ", colour=colours.WHT, style=styles.BLD)
+        for in_file, out_folder in config.RESOURCES.items():
+            colour_print(f"Checking {in_file}...", colour=colours.WHT)
+            for matched_file in Path(".").glob(str(in_file)):
+                copy_if_outdated(matched_file, Path(config.EXE_DIR).joinpath(out_folder, matched_file.name))
 
 
 
@@ -359,7 +383,7 @@ def build_object(source_file:Path) -> Tuple[bool, bool]:
     # If object file dir is missing, make it
     Path(Path(object_file).parent).mkdir(parents=True, exist_ok=True)
 
-    cmd = f"{config.COMPILER} -fdiagnostics-color=always {config.COMPILER_FLAGS} -c -I{config.HEADER_DIR} {config.OTHER_INCLUDES} {source_file} -o {object_file}"
+    cmd = f"{config.COMPILER} -fdiagnostics-color=always {config.COMPILER_FLAGS} -c -I{config.HEADER_DIR} {config.OTHER_INCLUDE_PATHS} {source_file} -o {object_file}"
     colour_print("Running: ", style=styles.BLD, end='')
     colour_print(cmd)
 
@@ -379,7 +403,9 @@ def build_object(source_file:Path) -> Tuple[bool, bool]:
 
 
 def execute(action:str):
-    """ Executes build based on configuration """
+    """
+    Executes build based on configuration
+    """
 
     print("")
     colour_print("Configuration", style=styles.ALL)
@@ -406,7 +432,7 @@ def execute(action:str):
     colour_print(config.OBJECT_EXT, colour=colours.BLU)
 
     colour_print("    Other includes:   ", colour=colours.MGT, style=styles.BLD, end='')
-    colour_print(config.OTHER_INCLUDES, colour=colours.MGT)
+    colour_print(config.OTHER_INCLUDE_PATHS, colour=colours.MGT)
 
     colour_print("    Header mappings:  ", colour=colours.MGT, style=styles.BLD)
     for header, source_list in config.DEPEND_MAPPING.items():
@@ -451,7 +477,9 @@ def execute(action:str):
 
 
 def parse_config(file):
-    """ Sets up config based on yaml config file, and executes build with given action """
+    """
+    Sets up config based on yaml config file, and executes build with given action
+    """
 
     colour_print("Constructing configuration from file ", end='')
     # colour_print(args.config, style=styles.BLD)
@@ -460,7 +488,9 @@ def parse_config(file):
 
 
 def parse_dict(configuration:Dict[str, str]):
-    """ Sets up config based on configuration dict, and executes build with given action """
+    """
+    Sets up config based on configuration dict, and executes build with given action
+    """
 
     colour_print("Constructing configuration from dictionary")
     # colour_print(str(configuration), style=styles.BLD)
@@ -470,6 +500,15 @@ def parse_dict(configuration:Dict[str, str]):
 
 
 def main():
+    """
+    Main entry point when running this file as a script. Argparse expects two parameters:
+        --target
+            Operation to perform, currently supports build or clean.
+        --config
+            YAML file containing build configurations for this run. This is required for cleaning or building, since the configuration
+            stores the paths for the object files and bin folder which will be deleted on cleaning.
+    """
+
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--target", required=True, choices=['build', 'clean'])
     argparser.add_argument("--config", required=True, type=str)

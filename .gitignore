@@ -1,4 +1,5 @@
 .mypy_cache
 .vscode
+.flake8
 *.pyc
 test-project

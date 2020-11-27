@@ -72,8 +72,8 @@ DEPEND_MAPPING:
 | HEADER_EXT            | Header file extension |
 | OBJECT_DIR            | Name of folder to place object files |
 | OBJECT_EXT            | Object file extension |
-| OTHER_INCLUDE_PATHS   | Array of extra header file directories to include in compilation (it will use the -I flag internally) |
-| OTHER_LIB_PATHS       | Array of extra library directories to include in linking (it will use the -L flag internally) |
+| OTHER_INCLUDE_PATHS   | Array of extra header file directories to include in compilation (it will use the `-I` flag internally) |
+| OTHER_LIB_PATHS       | Array of extra library directories to include in linking (it will use the `-L` flag internally) |
 | RESOURCES             | Object mapping "in" to "out" for resource directory inputs/outputs. Output is relative to EXE_DIR. Build script will only copy files that don't exist to out or files that are out of date. Useful for managing text files and images, for instance |
 | DEPEND_MAPPING        | Object mapping header files to one or more source files that supply definitions for declarations in the header file |
 

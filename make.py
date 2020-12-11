@@ -6,7 +6,6 @@ from pathlib import Path
 import shutil
 import os
 import sys
-import yaml
 import io
 import argparse
 import re
@@ -480,7 +479,7 @@ def parse_config(file):
     """
     Sets up config based on yaml config file, and executes build with given action
     """
-
+    import yaml
     colour_print("Constructing configuration from file ", end='')
     # colour_print(args.config, style=styles.BLD)
     config_file = yaml.safe_load(file.read())

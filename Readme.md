@@ -1,7 +1,13 @@
 # C Build Script
 
-A script to build simple C/C++ executable projects. Requires Python 3 and PyYAML.
+A script to build simple C/C++ executable projects.
 
+## Requirements
+- Python 3
+- PyYAML if you want to be able to load from file, otherwise it's unneeded.
+    - `pip3 install --user pyaml`
+
+## Overview
 The script has some expectations:
 - All dependencies of executable can be discovered through the -MM options of your compiler
 - All source files intended to be included in the executable have a header file of the same base name and same directory structure, and their headers will be discovered in a dependency tree generated from your main source file
@@ -15,8 +21,7 @@ usage: make.py [-h] --target {build,clean} --config CONFIG
 ```
 It takes one flag argument for the action to take, and one flag argument for the config file which will control how `make.py` builds your program. The config file is a YAML file.
 
-### Config Example
-
+## Config Example
 ```yml
 COMPILER: "clang++"
 COMPILER_FLAGS: "-std=c++17 -Wall -Wextra"
@@ -57,7 +62,7 @@ DEPEND_MAPPING:
         - helper-part2.cpp
 ```
 
-### Flag Description Table
+## Flag Description Table
 | Flag                  | Description |
 | ----                  | :- |
 | COMPILER              | Compiler executable name |
@@ -77,7 +82,7 @@ DEPEND_MAPPING:
 | RESOURCES             | Object mapping "in" to "out" for resource directory inputs/outputs. Output is relative to EXE_DIR. Build script will only copy files that don't exist to out or files that are out of date. Useful for managing text files and images, for instance |
 | DEPEND_MAPPING        | Object mapping header files to one or more source files that supply definitions for declarations in the header file |
 
-### Building from other scripts
+## Building from other scripts
 
 The build script can be invoked from another python script by supplying a dictionary with the required flags. For example, following our previous YAML example:
 

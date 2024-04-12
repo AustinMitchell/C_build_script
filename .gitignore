@@ -1,9 +1,6 @@
 .mypy_cache
 .vscode
-<<<<<<< HEAD
 .idea/
-=======
 .flake8
->>>>>>> 106847df191e5042b7bf0010a56e1c989e197e50
 *.pyc
 test-project

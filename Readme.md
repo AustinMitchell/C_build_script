@@ -55,6 +55,9 @@ DEPEND_MAPPING:
     helper.hpp:
         - helper-part1.cpp
         - helper-part2.cpp
+
+COMPILATION_DATABASE: true
+SKIP_LINKER: false
 ```
 
 ### Flag Description Table
@@ -65,7 +68,7 @@ DEPEND_MAPPING:
 | LINKER_FLAGS          | Flags to pass to the linker |
 | EXE_DIR               | Directory to place exectuable |
 | EXE_FILE              | Name of exectuable within directoy |
-| SOURCE_MAIN           | Name of source containing main function within directory |
+| SOURCE_MAIN           | Name of source containing main function within directory. Can contain wildcards. If wildcards are selected and multiple `main()` definitions are possible, you should enable SKIP_LINKER as well. |
 | SOURCE_DIR            | Name of folder containing source files |
 | SOURCE_EXT            | Source file extension |
 | HEADER_DIR            | Name of folder containing header files |
@@ -76,9 +79,10 @@ DEPEND_MAPPING:
 | OTHER_LIB_PATHS       | Array of extra library directories to include in linking (it will use the `-L` flag internally) |
 | RESOURCES             | Object mapping "in" to "out" for resource directory inputs/outputs. Output is relative to EXE_DIR. Build script will only copy files that don't exist to out or files that are out of date. Useful for managing text files and images, for instance |
 | DEPEND_MAPPING        | Object mapping header files to one or more source files that supply definitions for declarations in the header file |
+| COMPILATION_DATABASE  | Enables building a compilation database. Creates an entry for each object compiled. If any new files are built, the database is recompiled. |
+| SKIP_LINKER           | If enabled, skips the linking step. Useful if you want to build a compilation database for a bunch of source files at once. |
 
 ### Building from other scripts
-
 The build script can be invoked from another python script by supplying a dictionary with the required flags. For example, following our previous YAML example:
 
 ```python
@@ -115,6 +119,9 @@ def main():
             {"helper.hpp": ["helper-part1.cpp",
                             "helper-part2.cpp"]}
         ],
+
+        "COMPILATION_DATABASE": True,
+        "SKIP_LINKER": False
     }
 
     # Sets the config for the make script

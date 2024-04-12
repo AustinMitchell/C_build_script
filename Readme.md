@@ -1,7 +1,17 @@
 # C Build Script
 
+<<<<<<< HEAD
 A script to build simple C/C++ executable projects. Requires Python 3 and PyYAML.
+=======
+A script to build simple C/C++ executable projects.
+>>>>>>> 106847df191e5042b7bf0010a56e1c989e197e50
 
+## Requirements
+- Python 3
+- PyYAML if you want to be able to load from file, otherwise it's unneeded.
+    - `pip3 install --user pyaml`
+
+## Overview
 The script has some expectations:
 - All dependencies of executable can be discovered through the -MM options of your compiler
 - All source files intended to be included in the executable have a header file of the same base name and same directory structure, and their headers will be discovered in a dependency tree generated from your main source file
@@ -15,8 +25,7 @@ usage: make.py [-h] --target {build,clean} --config CONFIG
 ```
 It takes one flag argument for the action to take, and one flag argument for the config file which will control how `make.py` builds your program. The config file is a YAML file.
 
-### Config Example
-
+## Config Example
 ```yml
 COMPILER: "clang++"
 COMPILER_FLAGS: "-std=c++17 -Wall -Wextra"
@@ -60,7 +69,11 @@ COMPILATION_DATABASE: true
 SKIP_LINKER: false
 ```
 
+<<<<<<< HEAD
 ### Flag Description Table
+=======
+## Flag Description Table
+>>>>>>> 106847df191e5042b7bf0010a56e1c989e197e50
 | Flag                  | Description |
 | ----                  | :- |
 | COMPILER              | Compiler executable name |
@@ -68,7 +81,11 @@ SKIP_LINKER: false
 | LINKER_FLAGS          | Flags to pass to the linker |
 | EXE_DIR               | Directory to place exectuable |
 | EXE_FILE              | Name of exectuable within directoy |
+<<<<<<< HEAD
 | SOURCE_MAIN           | Name of source containing main function within directory. Can contain wildcards. If wildcards are selected and multiple `main()` definitions are possible, you should enable SKIP_LINKER as well. |
+=======
+| SOURCE_MAIN           | Name of source containing main function within directory |
+>>>>>>> 106847df191e5042b7bf0010a56e1c989e197e50
 | SOURCE_DIR            | Name of folder containing source files |
 | SOURCE_EXT            | Source file extension |
 | HEADER_DIR            | Name of folder containing header files |
@@ -79,10 +96,16 @@ SKIP_LINKER: false
 | OTHER_LIB_PATHS       | Array of extra library directories to include in linking (it will use the `-L` flag internally) |
 | RESOURCES             | Object mapping "in" to "out" for resource directory inputs/outputs. Output is relative to EXE_DIR. Build script will only copy files that don't exist to out or files that are out of date. Useful for managing text files and images, for instance |
 | DEPEND_MAPPING        | Object mapping header files to one or more source files that supply definitions for declarations in the header file |
+<<<<<<< HEAD
 | COMPILATION_DATABASE  | Enables building a compilation database. Creates an entry for each object compiled. If any new files are built, the database is recompiled. |
 | SKIP_LINKER           | If enabled, skips the linking step. Useful if you want to build a compilation database for a bunch of source files at once. |
 
 ### Building from other scripts
+=======
+
+## Building from other scripts
+
+>>>>>>> 106847df191e5042b7bf0010a56e1c989e197e50
 The build script can be invoked from another python script by supplying a dictionary with the required flags. For example, following our previous YAML example:
 
 ```python
@@ -119,11 +142,16 @@ def main():
             {"helper.hpp": ["helper-part1.cpp",
                             "helper-part2.cpp"]}
         ],
+<<<<<<< HEAD
 
         "COMPILATION_DATABASE": True,
         "SKIP_LINKER": False
     }
 
+=======
+    }
+
+>>>>>>> 106847df191e5042b7bf0010a56e1c989e197e50
     # Sets the config for the make script
     make.parse_dict(config)
     # Executes based on the config

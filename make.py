@@ -487,7 +487,6 @@ def parse_config(file):
     """
     Sets up config based on yaml config file, and executes build with given action
     """
-
     colour_print("Constructing configuration from file ", end='')
     # colour_print(args.config, style=styles.BLD)
     config_file = yaml.safe_load(file.read())

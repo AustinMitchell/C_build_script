@@ -279,7 +279,7 @@ def generate_dependencies(file: Path) -> Generator[Path, None, None]:
 
     # This will create a string of all the non-system dependencies for our source file separated by spaces
     cmd = f"{Config.COMPILER} {Config.OTHER_INCLUDE_PATHS} -MM -I{Config.HEADER_DIR} {file}"
-    deps = re.findall(r"\S+\.hpp", str(shell(cmd).stdout.decode("ascii")))
+    deps = re.findall(r"\S+\.hpp", str(shell(cmd).stdout.decode(sys.stdout.encoding)))
 
     return (Path(dep) for dep in deps)
 
@@ -335,14 +335,9 @@ def build():
             colour_print(cmd, colour=Colours.WHT)
 
             ret = shell(cmd)
-            ret.wait()
-
-            msg = ret.stdout.readlines()
-
-            if msg:
-                for line in msg:
-                    print(f"\t{line.decode(sys.stdout.encoding)}", end='')
-
+            if msg_lines := ret.stdout.decode(sys.stdout.encoding).splitlines():
+                for line in msg_lines:
+                    print(f"\t{line}")
             print()
 
             if ret.returncode != 0:
@@ -399,7 +394,7 @@ def build_object(source_file: Path) -> Tuple[bool, bool]:
 
     ret = shell(cmd)
 
-    if msg_lines := ret.stdout.decode("ascii").splitlines():
+    if msg_lines := ret.stdout.decode(sys.stdout.encoding).splitlines():
         for line in msg_lines:
             print(f"\t{line}")
         print()

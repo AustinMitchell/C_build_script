@@ -1,6 +1,5 @@
 #!python3
 
-from subprocess import Popen, PIPE, STDOUT
 from typing import List, Tuple, Any, Generator, Set, Dict
 from pathlib import Path
 import shutil
@@ -9,12 +8,13 @@ import sys
 import yaml
 import argparse
 import re
+import subprocess
 
 
 class Config:
     """
     Contains the configurations required for building. Takes in an argument dict and converts the arguments to more practical forms
-    """
+    """ 
 
     COMPILER: str
     COMPILER_FLAGS: str
@@ -182,12 +182,11 @@ def copy_if_outdated(source: Path, dest: Path, depth: int = 0) -> None:
                 copy_if_outdated(f, dest.joinpath(f.name), depth+1)
 
 
-def shell(cmd: str, stdout=PIPE) -> Popen:
+def shell(cmd: str, stdout=subprocess.PIPE) -> subprocess.CompletedProcess:
     """
     Executes a command on the shell using Popen and returns the object created
     """
-
-    return Popen(cmd, shell=True, stdin=PIPE, stdout=stdout, stderr=STDOUT)
+    return subprocess.run(cmd, shell=True, stdin=subprocess.PIPE, stdout=stdout, stderr=subprocess.STDOUT)
 
 
 def test_source(source: Path, dependencies: List[Path]) -> bool:
@@ -244,7 +243,7 @@ def source_files() -> List[Tuple[Path, bool]]:
         if current_dep in Config.DEPEND_MAPPING:
             for current_source in Config.DEPEND_MAPPING[current_dep]:
                 if os.path.exists(current_source):
-                    new_deps = generate_dependencies(current_source)
+                    new_deps = list(generate_dependencies(current_source))
                     sources.append((current_source, test_source(current_source, list(new_deps))))
                     deps.update(new_deps)
         else:
@@ -252,7 +251,7 @@ def source_files() -> List[Tuple[Path, bool]]:
             current_source = header_to_source(current_dep)
 
             if os.path.exists(current_source):
-                new_deps = generate_dependencies(current_source)
+                new_deps = list(generate_dependencies(current_source))
                 sources.append((current_source, test_source(current_source, list(new_deps))))
                 deps.update(new_deps)
 
@@ -280,7 +279,7 @@ def generate_dependencies(file: Path) -> Generator[Path, None, None]:
 
     # This will create a string of all the non-system dependencies for our source file separated by spaces
     cmd = f"{Config.COMPILER} {Config.OTHER_INCLUDE_PATHS} -MM -I{Config.HEADER_DIR} {file}"
-    deps = re.findall(r"\S+\.hpp", str(shell(cmd, stdout=PIPE).stdout.read()))
+    deps = re.findall(r"\S+\.hpp", str(shell(cmd).stdout.decode("ascii")))
 
     return (Path(dep) for dep in deps)
 
@@ -399,16 +398,14 @@ def build_object(source_file: Path) -> Tuple[bool, bool]:
     colour_print(cmd)
 
     ret = shell(cmd)
-    ret.wait()
 
-    msg = ret.stdout.readlines()
-
-    if msg:
-        for line in msg:
-            print(f"\t{line.decode(sys.stdout.encoding)}", end='')
+    if msg_lines := ret.stdout.decode("ascii").splitlines():
+        for line in msg_lines:
+            print(f"\t{line}")
         print()
-
-    return ret.returncode == 0, len(msg) > 0
+        return ret.returncode == 0, True
+    else:
+        return ret.returncode == 0, False
 
 
 def execute(action: str):
